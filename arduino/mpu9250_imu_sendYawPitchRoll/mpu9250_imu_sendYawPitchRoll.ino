@@ -22,6 +22,7 @@ Supported Platforms:
 - ATSAMD21 (Arduino Zero, SparkFun SAMD21 Breakouts)
 *************************************************************/
 #include <SparkFunMPU9250-DMP.h>
+#include <math.h>
 
 #define SerialPort SerialUSB
 
@@ -33,6 +34,7 @@ float hYaw;
 float r;
 float p;
 float y;
+bool sendInverse; // send coordinates that would be used for a rotation opposite that of the reading, e.g. ambisonic rotation for a headtracker
 
 void setup() 
 {
@@ -69,7 +71,7 @@ void setup()
                // Enable 6-axis quat
                // DMP_FEATURE_LP_QUAT can also be used. It uses the 
                // accelerometer (3-axis) in low-power mode to estimate quat's.
-               DMP_FEATURE_6X_LP_QUAT | 
+               DMP_FEATURE_6X_LP_QUAT |
                DMP_FEATURE_GYRO_CAL,      // Use gyro calibration, resets gyro after 8 sec of no motion
               180);                       // Set DMP FIFO rate to 200 Hz
   }
@@ -112,9 +114,9 @@ void printIMUData(void)
     r = p = y = 0.0;
     setHome = false;
   } else {
-    r = (r - hRoll) % 360;
-    p = (p - hPitch) % 360;
-    y = (y - hYaw) % 360;
+    r = r - hRoll;
+    p = p - hPitch;
+    y = y - hYaw;
   }
   
 //  // After calling dmpUpdateFifo() the ax, gx, mx, etc. values
@@ -150,4 +152,3 @@ void parseSerialInput(char c)
     break;
   }
 }
-
