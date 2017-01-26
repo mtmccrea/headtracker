@@ -8,6 +8,13 @@ import re
 import time
 from threading import Timer
 import atexit
+import liblo, sys
+
+# user-defined
+OSC_URL  = '127.0.0.1'
+OSC_PORT = 57120
+OSC_PATH = "/imu"
+runTime  = 5           # testing - run for this long after connecting
 
 # Get the BLE provider for the current platform.
 ble = Adafruit_BluefruitLE.get_provider()
@@ -15,11 +22,21 @@ readMore = True
 concat = ''
 initialised = False
 
+# set up and Address for OSC forwarding
+# send all messages to port 57120 on the local machine
+try:
+    oscTarget = liblo.Address(OSC_URL,OSC_PORT)
+except liblo.AddressError as err:
+    print(err)
+    sys.exit()
+
 def readQueue(uart):
     global concat
     global readMore
+
     while readMore:
         received = uart.read()
+        # print received
         if received is not None:
             # print('got some: {}'.format(received))
             concat = ''.join([concat, received])
@@ -67,8 +84,11 @@ def processStr():
             return found
 
 def dispatch(data):
-    # 3
-    print 'dispatching: {}'.format(data)
+    # print 'dispatching: {}'.format(data)
+    msg = liblo.Message(OSC_PATH)           # create a message
+    for val in data:
+        msg.add(val)                        # ... append arguments
+    liblo.send(oscTarget, msg)              # ... and then send it
 
 # Main function implements the program logic so it can run in a background
 # thread.  Most platforms require the main thread to handle GUI events and other
@@ -156,12 +176,12 @@ def main():
         print('Waiting to receive data from the device...')
 
         # atexit.register(disconnect(device)) # register to cleanup even on cmd-c
-        Timer(5, stopReading).start() # schedule to stop reading the data Queue in x seconds
+        Timer(runTime, stopReading).start() # schedule to stop reading the data Queue in x seconds
         Timer(0, showTimer).start()
-
+        print 'HERE'
         readQueue(uart) # start the inf loop reading from the data queue
                         # this thread holds while the read loop is running
-
+        print 'HERE2'
         # received = uart.read(timeout_sec=20)
         # if received is not None:
         #     # Received data, print it out.
@@ -189,7 +209,8 @@ def stopReading():
     readMore = False
 
 def showTimer():
-    for i in range(6):
+    # for i in range(int(howLong)):
+    for i in range(int(runTime)):
         print i
         time.sleep(1)
 
