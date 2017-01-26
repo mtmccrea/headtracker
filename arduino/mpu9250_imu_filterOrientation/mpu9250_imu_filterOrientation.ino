@@ -23,6 +23,8 @@ TODO:
 - add flag to swap between Madgwick and Mahony filters on the fly 
   (comfirm this is possible without additional CPU cost)
 - add flag to send inverse rotations for e.g. ambisonic scene head tracking
+- confirm the sensor/filter update rates match:
+  https://learn.adafruit.com/ahrs-for-adafruits-9-dof-10-dof-breakout/sensor-fusion-algorithms?view=all#tuning-the-filter
 
 
 Modified from the following:
