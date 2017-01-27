@@ -70,7 +70,9 @@ Hardware:
 #include <FlashStorage.h>
 #endif
 
-#define SerialPort SerialUSB
+// This is taken care of by LOG_PORT in config.h
+//#define SerialPort SerialUSB  // NOTE: only for posting to serial monitor when connected to USB
+                              // serial communication with bluefruit will be over Serial1 at 9600 baud
 
 
 // -------------------- /***BLE***/ --------------------
@@ -124,15 +126,15 @@ Hardware:
 
 
 // Create the bluefruit object, either software serial...uncomment these lines
-
+/*
 SoftwareSerial bluefruitSS = SoftwareSerial(BLUEFRUIT_SWUART_TXD_PIN, BLUEFRUIT_SWUART_RXD_PIN);
 
 Adafruit_BluefruitLE_UART ble(bluefruitSS, BLUEFRUIT_UART_MODE_PIN,
                       BLUEFRUIT_UART_CTS_PIN, BLUEFRUIT_UART_RTS_PIN);
-
+*/
 
 /* ...or hardware serial, which does not need the RTS/CTS pins. Uncomment this line */
-// Adafruit_BluefruitLE_UART ble(BLUEFRUIT_HWSERIAL_NAME, BLUEFRUIT_UART_MODE_PIN);
+Adafruit_BluefruitLE_UART ble(BLUEFRUIT_HWSERIAL_NAME, BLUEFRUIT_UART_MODE_PIN); // Serial1
 
 /* ...hardware SPI, using SCK/MOSI/MISO hardware SPI pins and then user selected CS/IRQ/RST */
 //Adafruit_BluefruitLE_SPI ble(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_RST);
@@ -145,7 +147,7 @@ Adafruit_BluefruitLE_UART ble(bluefruitSS, BLUEFRUIT_UART_MODE_PIN,
 
 // A small helper
 void error(const __FlashStringHelper*err) {
-  Serial.println(err);
+  LOG_PORT.println(err);
   while (1);
 }    
 
@@ -262,6 +264,7 @@ void setup()
 #endif
 
   // Initialize the MPU-9250. Should return true on success:
+  // initializes the LOG_PORT (SerialUSB) as well
   if ( !initIMU() ) 
   {
     LOG_PORT.println("Error connecting to MPU-9250");
@@ -272,73 +275,12 @@ void setup()
   // Filter expects 50 samples per second
   filter.begin(50);
 
-
-  // -------------------- /***BLE Setup***/ --------------------
-  //            /* TODO: distinguish proper serial ports
-  
-  while (!Serial);  // required for Flora & Micro
-  delay(500);
-
-  Serial.begin(115200);
-  Serial.println(F("Adafruit Bluefruit Command <-> Data Mode Example"));
-  Serial.println(F("------------------------------------------------"));
-
-  /* Initialise the module */
-  Serial.print(F("Initialising the Bluefruit LE module: "));
-
-  if ( !ble.begin(VERBOSE_MODE) )
-  {
-    error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
-  }
-  Serial.println( F("OK!") );
-
-  if ( FACTORYRESET_ENABLE )
-  {
-    /* Perform a factory reset to make sure everything is in a known state */
-    Serial.println(F("Performing a factory reset: "));
-    if ( ! ble.factoryReset() ){
-      error(F("Couldn't factory reset"));
-    }
-  }
-
-  /* Disable command echo from Bluefruit */
-  ble.echo(false);
-
-  Serial.println("Requesting Bluefruit info:");
-  /* Print Bluefruit information */
-  ble.info();
-
-  Serial.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
-  Serial.println(F("Then Enter characters to send to Bluefruit"));
-  Serial.println();
-
-  ble.verbose(false);  // debug info is a little annoying after this point!
-
-  /* Wait for connection */
-  while (! ble.isConnected()) {
-      delay(500);
-  }
-
-  Serial.println(F("******************************"));
-
-  // LED Activity command is only supported from 0.6.6
-  if ( ble.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
-  {
-    // Change Mode LED Activity
-    Serial.println(F("Change LED activity to " MODE_LED_BEHAVIOUR));
-    ble.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
-  }
-
-  // Set module to DATA mode
-  Serial.println( F("Switching to DATA mode!") );
-  ble.setMode(BLUEFRUIT_MODE_DATA);
-
-  Serial.println(F("******************************"));
+  initBLE()
 }
 
 void loop()
 {
-  // The loop constantly checks for new serial input:
+  // The loop constantly checks for new serial input (from Serial Monitor):
   if ( LOG_PORT.available() )
   {
     // If new input is available on serial port
@@ -378,13 +320,13 @@ void loop()
   {
     int c = ble.read();
 
-    Serial.print((char)c);
+    LOG_PORT.print((char)c);
 
     // Hex output too, helps w/debugging!
-    Serial.print(" [0x");
-    if (c <= 0xF) Serial.print(F("0"));
-    Serial.print(c, HEX);
-    Serial.print("] ");
+    LOG_PORT.print(" [0x");
+    if (c <= 0xF) LOG_PORT.print(F("0"));
+    LOG_PORT.print(c, HEX);
+    LOG_PORT.print("] ");
   }
   
 }
@@ -648,6 +590,73 @@ bool initIMU(void)
   imu.dmpBegin(dmpFeatureMask, fifoRate);
 
   return true; // Return success
+}
+
+ // -------------------- /***BLE Setup***/ --------------------
+void initBLE(void)
+{
+  while (!LOG_PORT);  // required for Flora & Micro
+  delay(500);
+
+// This already happens in initHardware()
+//  SerialPort.begin(115200); // open communication with SerialUSB
+
+//  LOG_PORT.println(F("Adafruit Bluefruit Command <-> Data Mode Example"));
+
+  /* Initialise the module */
+  LOG_PORT.println(F("------------------------------------------------"));
+  LOG_PORT.print(F("Initialising the Bluefruit LE module: "));
+
+  if ( !ble.begin(VERBOSE_MODE) )
+  {
+    error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
+  }
+  LOG_PORT.println( F("OK!") );
+
+  if ( FACTORYRESET_ENABLE )
+  {
+    /* Perform a factory reset to make sure everything is in a known state */
+    LOG_PORT.println(F("Performing a factory reset: "));
+    if ( ! ble.factoryReset() ){
+      error(F("Couldn't factory reset"));
+    }
+  }
+
+  /* Disable command echo from Bluefruit */
+  ble.echo(false);
+
+  
+  LOG_PORT.println("Requesting Bluefruit info:");
+  /* Print Bluefruit information */
+  ble.info();
+
+  LOG_PORT.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
+  LOG_PORT.println(F("Then Enter characters to send to Bluefruit"));
+  LOG_PORT.println();
+
+  ble.verbose(false);  // debug info is a little annoying after this point!
+
+  /* Wait for connection */
+  LOG_PORT.print("Waiting for connection from central device... ");
+  while (! ble.isConnected()) {
+      delay(500);
+  }
+  LOG_PORT.println("Connected!");
+  
+  LOG_PORT.println(F("******************************"));
+
+  // LED Activity command is only supported from 0.6.6
+  if ( ble.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
+  { // Change Mode LED Activity
+    LOG_PORT.println(F("Change LED activity to " MODE_LED_BEHAVIOUR));
+    ble.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
+  }
+
+  // Set module to DATA mode
+  LOG_PORT.println( F("Switching to DATA mode!") );
+  ble.setMode(BLUEFRUIT_MODE_DATA);
+
+  LOG_PORT.println(F("******************************"));
 }
 
 
