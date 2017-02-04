@@ -14,13 +14,14 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 5           # testing - run for this long after connecting
+runTime  = 20           # testing - run for this long after connecting
 
 # Get the BLE provider for the current platform.
 ble = Adafruit_BluefruitLE.get_provider()
 readMore = True
 concat = ''
 initialised = False
+res = []
 
 # set up and Address for OSC forwarding
 # send all messages to port 57120 on the local machine
@@ -33,29 +34,59 @@ except liblo.AddressError as err:
 def readQueue(uart):
     global concat
     global readMore
+    global res
 
+    print "reading..."
     while readMore:
+        # print '...'
         received = uart.read()
-        # print received
+        # print 'received: {}'.format(received)
         if received is not None:
             # print('got some: {}'.format(received))
             concat = ''.join([concat, received])
-            result = processStr()
 
-            if result is not None:
+            # new parse edit
+            processStr() # search the string for matches, pack them into res array
 
-                if "><" not in result:
-                    remainder = concat[len(result)+2:]
-                    split = result.split(',')
-                    # print 'split: {}, remainder: {}'.format(split, remainder)
-                    result = np.array(map(float, split))
-                    # print 'result: {}, remainder: {}'.format(result, remainder)
-                    concat = remainder
-                    dispatch(result)
-                else:
-                    initializeStr()
+            if len(res) > 0:
+                # print res
+                for item in res:
+                    if "><" not in item:
+                        split = item.split(',')
+                        # print 'split: {}'.format(split)
+                        try:
+                            result = np.array(map(float, split))
+                        except:
+                            print "Error in splitting data: {}".format(split)
+                        dispatch(result)
+                    else:
+                        print "Error: result looks like more than one packet: {}".format(result)
+                        initializeStr()
+
+                res = [] # reset result array
+
+            # result = processStr()
+            #
+            # if result is not None:
+            #
+            #     if "><" not in result:
+            #         remainder = concat[len(result)+2:]
+            #         split = result.split(',')
+            #         # print 'split: {}, remainder: {}'.format(split, remainder)
+            #         try:
+            #             result = np.array(map(float, split))
+            #         except:
+            #             print "Error in splitting data: {}".format(split)
+            #         # print 'result: {}, remainder: {}'.format(result, remainder)
+            #         concat = remainder
+            #         dispatch(result)
+            #     else:
+            #         print "result looks like more than one packet: {}".format(result)
+            #         initializeStr()
+
             # else:
             #     print "No match found :("
+
     print('done reading')
 
 def initializeStr():
@@ -63,25 +94,76 @@ def initializeStr():
     global initialised
     # find beginning of the most recent data cluster
     startFrom = concat.rfind('<', 0, len(concat))
-    if (startFrom > -1):
-        concat = concat[startFrom:]
-        # print 'clipped: {}'.format(concat)
+    if startFrom == (len(concat)-1):
+        concat = ''
         initialised = True
-        processStr()
+        print 'initialised'
     else:
-        concat = '' # didn't finda a data start point, clear it out
+        if (startFrom > -1):
+            concat = concat[startFrom+1:] # '<' is stripped
+            # print 'clipped: {}'.format(concat)
+            initialised = True
+            print 'initialised'
+            processStr()
+        else:
+            concat = '' # didn't finda a data start point, clear it out
 
 def processStr():
-    # global concat
+    global concat
+    global res
+
     if not initialised:
         initializeStr()
     else:
-        found = re.search('<(.*)>', concat) # there's likely a faster way...
-        if found is not None:
-            # print('found a full match')
-            return found.group(1)
-        else:
-            return found
+        # print 'processing: {}'.format(concat)
+        # look for beginning of next data chunk
+        endAt = concat.find('<', 0, len(concat))
+        if (endAt > -1):
+            # found beginning of next data chunk
+            # make sure it isn't the first char
+            if endAt > 1:
+                # store found chunk
+                found = concat[:endAt-1]
+                # print 'found: {}'.format(found)
+                res.append(found)
+                # print 'remaining: {}'.format(res)
+
+            if endAt == (len(concat)-1):
+                concat = '' # we're at the end, strip the '<'
+            else:
+                # strip the '<' and process the rest of the string
+                concat = concat[endAt+1:]
+                processStr() # call self to check remaining matches
+
+# def initializeStr():
+#     global concat
+#     global initialised
+#     # find beginning of the most recent data cluster
+#     startFrom = concat.rfind('<', 0, len(concat))
+#     if startFrom == (len(concat)-1)
+#
+#     if (startFrom > -1):
+#         concat = concat[startFrom:]
+#         # print 'clipped: {}'.format(concat)
+#         initialised = True
+#         processStr()
+#     else:
+#         concat = '' # didn't finda a data start point, clear it out
+
+
+# def processStr():
+#     if not initialised:
+#         initializeStr()
+#     else:
+#         found = re.search('<(.*)>', concat) # there's likely a faster way...
+#         if found is not None:
+#             # print('found a full match')
+#             return found.group(1)
+#         else:
+#             return found
+
+
+
 
 def dispatch(data):
     # print 'dispatching: {}'.format(data)
@@ -89,6 +171,7 @@ def dispatch(data):
     for val in data:
         msg.add(val)                        # ... append arguments
     liblo.send(oscTarget, msg)              # ... and then send it
+    # print msg
 
 # Main function implements the program logic so it can run in a background
 # thread.  Most platforms require the main thread to handle GUI events and other
