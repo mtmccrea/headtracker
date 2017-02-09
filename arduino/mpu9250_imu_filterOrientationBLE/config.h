@@ -37,6 +37,11 @@
 /////////////////////////
 // Note: Some of these params can be overwritten using serial
 //  commands. These are just defaults on initial programming
+// NOTE: TBD: the mahony/madgwick filter update rate should be set to the 
+// rate that it's given samples (dmp sample rate?)
+// but if the dmp is used for sensor fusion, it's being replaced
+// by the filters, so higher rates could be used?
+// test these limits (as well as accuracy, of course)
 #define DMP_SAMPLE_RATE    200 // Logging/DMP sample rate(4-200 Hz) This is the FIFO rate
 #define IMU_COMPASS_SAMPLE_RATE 100 // Compass sample rate (4-100 Hz)
 #define IMU_AG_SAMPLE_RATE 200 // Accel/gyro sample rate Must be between 4Hz and 1kHz

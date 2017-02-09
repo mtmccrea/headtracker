@@ -276,6 +276,10 @@ void setup()
   }
 
   // Filter expects 50 samples per second
+  // UPDATE: TODO: calculate the sample rate of the 
+  // data it's using! could be higher than 50
+  // should prob match the FIFO rate
+  // Note DEFAULT in source is 512!
   filter.begin(200);
 
   initBLE();
@@ -377,6 +381,7 @@ void filterSensorData(void)
   float y = my - mag_offsets[1];
   float z = mz - mag_offsets[2];
 
+  // debug
   LOG_PORT.println("Filtering...");
 
   // Apply mag soft iron error compensation
@@ -391,6 +396,10 @@ void filterSensorData(void)
   //  float gy = gyro_event.gyro.y * 57.2958F;
   //  float gz = gyro_event.gyro.z * 57.2958F;
 
+
+  // NOTE: filter uses 6-axis IMU algorithm if magnetometer measurement invalid
+  // (avoids NaN in magnetometer normalisation) 
+  // - see filter source if needed, could post if this is the case
   // Update the filter
   filter.update(gx, gy, gz,
                 ax, ay, az,
@@ -443,7 +452,8 @@ void sendToBLE(void)
   //  sprintf(buffer, "<%s,%s,%s>", val1, val2, val3);
 
   //  char buffer[23]; // '<123.45,678.90,123.45>' + eol
-  char buffer[17]; // '<123.45,123.45>' + eol
+  //  char buffer[20]; // '<123.4,678.9,123.4>' + eol
+  char buffer[14]; // '<123.4,123.4>' + eol
   char pbuf[6];
   char rbuf[6];
   char ybuf[6];
