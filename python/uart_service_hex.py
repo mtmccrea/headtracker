@@ -1,8 +1,10 @@
 # Example of interaction with a BLE UART device using a UART service
 # implementation.
 # Author: Tony DiCola
+# Modification: Michael McCrea
+
 import Adafruit_BluefruitLE
-from Adafruit_BluefruitLE.services import CUSTOM
+from Adafruit_BluefruitLE.services import UART
 import numpy as np
 import re
 import time
@@ -14,14 +16,19 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 40           # testing - run for this long after connecting
+runTime  = 20                      # testing - run for this long after connecting
+
+HEX_SIZE = 3                        # number of hex digits expected in each value
+PACKET_SIZE = HEX_SIZE * 3          # pre-compute some scalars
+BITDEPTH = np.pow(16, HEX_SIZE) - 1
+TO_DEGREES = BITDEPTH * 360.0
 
 # Get the BLE provider for the current platform.
 ble = Adafruit_BluefruitLE.get_provider()
 readMore = True
 concat = ''
 initialised = False
-res = []
+packets = []
 
 # set up and Address for OSC forwarding
 # send all messages to port 57120 on the local machine
@@ -31,58 +38,19 @@ except liblo.AddressError as err:
     print(err)
     sys.exit()
 
-def readQueue(custom):
+def readQueue(uart):
     global concat
     global readMore
-    global res
 
     print "reading..."
     while readMore:
         # print '...'
-        received = custom.read()
+        received = uart.read()
         # print 'received: {}'.format(received)
         if received is not None:
             # print('got some: {}'.format(received))
-            concat = ''.join([concat, received])
-
-            # new parse edit
-            processStr() # search the string for matches, pack them into res array
-
-            if len(res) > 0:
-                # print res
-                for item in res:
-                    if "><" not in item:
-                        split = item.split(',')
-                        # print 'split: {}'.format(split)
-                        try:
-                            result = np.array(map(float, split))
-                        except:
-                            print "Error in splitting data: {}".format(split)
-                        dispatch(result)
-                    else:
-                        print "Error: result looks like more than one packet: {}".format(result)
-                        initializeStr()
-
-                res = [] # reset result array
-
-            # result = processStr()
-            #
-            # if result is not None:
-            #
-            #     if "><" not in result:
-            #         remainder = concat[len(result)+2:]
-            #         split = result.split(',')
-            #         # print 'split: {}, remainder: {}'.format(split, remainder)
-            #         try:
-            #             result = np.array(map(float, split))
-            #         except:
-            #             print "Error in splitting data: {}".format(split)
-            #         # print 'result: {}, remainder: {}'.format(result, remainder)
-            #         concat = remainder
-            #         dispatch(result)
-            #     else:
-            #         print "result looks like more than one packet: {}".format(result)
-            #         initializeStr()
+            concat = ''.join([concat, received])    # join recieved string with parsing buffer
+            parseStr()                            # search the string for matches,
 
             # else:
             #     print "No match found :("
@@ -104,66 +72,60 @@ def initializeStr():
             # print 'clipped: {}'.format(concat)
             initialised = True
             print 'initialised'
-            processStr()
+            parseStr()
         else:
             concat = '' # didn't finda a data start point, clear it out
 
-def processStr():
+def parseStr():
     global concat
-    global res
+    global packets
 
     if not initialised:
         initializeStr()
     else:
         # print 'processing: {}'.format(concat)
+
         # look for beginning of next data chunk
         endAt = concat.find('<', 0, len(concat))
-        if (endAt > -1):
-            # found beginning of next data chunk
-            # make sure it isn't the first char
-            if endAt > 1:
-                # store found chunk
-                found = concat[:endAt-1]
-                # print 'found: {}'.format(found)
-                res.append(found)
-                # print 'remaining: {}'.format(res)
+        if (endAt > -1):                            # found beginning of next data chunk
+            found = concat[:endAt]                  # copy full packet from concat
+            # print 'found: {}'.format(found)
+            packets.append(found)                       # append found packet to result list
+            # print 'remaining: {}'.format(packets)
+            processResult()                         # process result and dispatch
 
-            if endAt == (len(concat)-1):
-                concat = '' # we're at the end, strip the '<'
+            if endAt == (len(concat)-1):            # was '<' found at the end of the buffer?
+                concat = ''                         # clear it, ready for next data bundle
             else:
-                # strip the '<' and process the rest of the string
-                concat = concat[endAt+1:]
-                processStr() # call self to check remaining matches
+                concat = concat[endAt+1:]           # strip the '<'
+                parseStr()                          # process the rest of the string via self
 
-# def initializeStr():
-#     global concat
-#     global initialised
-#     # find beginning of the most recent data cluster
-#     startFrom = concat.rfind('<', 0, len(concat))
-#     if startFrom == (len(concat)-1)
-#
-#     if (startFrom > -1):
-#         concat = concat[startFrom:]
-#         # print 'clipped: {}'.format(concat)
-#         initialised = True
-#         processStr()
-#     else:
-#         concat = '' # didn't finda a data start point, clear it out
-
-
-# def processStr():
-#     if not initialised:
-#         initializeStr()
-#     else:
-#         found = re.search('<(.*)>', concat) # there's likely a faster way...
-#         if found is not None:
-#             # print('found a full match')
-#             return found.group(1)
-#         else:
-#             return found
+def processResult():
+    # print packets
+    if len(packets) > 0:
+        for item in packets:
+            isize = len(item)
+            if (isize == PACKET_SIZE):              # confirm data packet is correct size
+                # TODO: monitor if this condition is ever caught: if not remove this check
+                if "<" not in item:
+                    split = [item[x:x+HEX_SIZE] for x in range(0, len(item), HEX_SIZE)] # split into HEX_SIZE chunks
+                    # print 'split: {}'.format(split)
+                    try:
+                        ints = [int(val, 16) for val in split]    # convert hex to ints
+                        result = [(val * TO_DEGREES) for val in ints] # convert normalized ints to degrees
+                        # result = np.array(map(float, split))
+                    except:
+                        print "Error in splitting data: {}".format(split)
+                    dispatch(result)
+                else:
+                    print "Error: result looks like more than one packet: {}".format(result)
+                    initializeStr()
+            else:
+                print "Error: wrong packet size! {}".format(item)       # TODO: how to properly handle returning on error
 
 
 
+        packets = []                                # reset found packets array
 
 def dispatch(data):
     # print 'dispatching: {}'.format(data)
@@ -189,47 +151,47 @@ def main():
     adapter.power_on()
     print('Using adapter: {0}'.format(adapter.name))
 
-    # Disconnect any currently connected CUSTOM devices.  Good for cleaning up and
+    # Disconnect any currently connected UART devices.  Good for cleaning up and
     # starting from a fresh state.
-    print('Disconnecting any connected CUSTOM devices...')
-    CUSTOM.disconnect_devices()
+    print('Disconnecting any connected UART devices...')
+    UART.disconnect_devices()
 
-    # Scan for CUSTOM devices.
-    print('Searching for CUSTOM device...')
+    # Scan for UART devices.
+    print('Searching for UART device...')
 
     try:
         adapter.start_scan()
-        # # Search for the first CUSTOM device found (will time out after 60 seconds
+        # # Search for the first UART device found (will time out after 60 seconds
         # # but you can specify an optional timeout_sec parameter to change it).
-        # device = CUSTOM.find_device()
+        # device = UART.find_device()
 
         test = True
-        KNOWN_customs = set()
+        known_uarts = set()
         while test:
-            # Call CUSTOM.find_devices to get a list of any CUSTOM devices that
+            # Call UART.find_devices to get a list of any UART devices that
             # have been found.  This call will quickly return results and does
             # not wait for devices to appear.
-            found = set(CUSTOM.find_devices())
+            found = set(UART.find_devices())
             # Check for new devices that haven't been seen yet and print out
             # their name and ID (MAC address on Linux, GUID on OSX).
-            new = found - KNOWN_customs
+            new = found - known_uarts
             for dev in new:
-                print('Found CUSTOM: {0} [{1}]'.format(dev.name, dev.id))
+                print('Found UART: {0} [{1}]'.format(dev.name, dev.id))
                 if (dev.name == 'Adafruit Bluefruit LE'):
                     device = dev
                     test = False
                     print('FOUND IT')
 
-            KNOWN_customs.update(new)
+            known_uarts.update(new)
             # Sleep for a second and see if new devices have appeared.
             time.sleep(1.0)
 
         print 'found devices:'
-        for dev in KNOWN_customs:
+        for dev in known_uarts:
             print dev.name
 
         if device is None:
-            raise RuntimeError('Failed to find CUSTOM device!')
+            raise RuntimeError('Failed to find UART device!')
     finally:
         # Make sure scanning is stopped before exiting.
         adapter.stop_scan()
@@ -241,32 +203,31 @@ def main():
     # Once connected do everything else in a try/finally to make sure the device
     # is disconnected when done.
     try:
-        # Wait for service discovery to complete for the CUSTOM service.  Will
+        # Wait for service discovery to complete for the UART service.  Will
         # time out after 60 seconds (specify timeout_sec parameter to override).
         print('Discovering services...')
-        CUSTOM.discover(device)
+        UART.discover(device)
         print 'device name: {}'.format(device.name)
 
         # Once service discovery is complete create an instance of the service
         # and start interacting with it.
-        custom = CUSTOM(device)
-        print 'created instance of CUSTOM'
+        uart = UART(device)
 
         # Write a string to the TX characteristic.
-        initstr = "start!"
-        hex = [elem.encode("hex") for elem in initstr]
-        custom.write(hex)
-        print("Sent 'start!' to the device.")
+        uart.write('Hello world!\r\n')
+        print("Sent 'Hello world!' to the device.")
 
+        # Now wait up to one minute to receive data from the device.
         print('Waiting to receive data from the device...')
+
         # atexit.register(disconnect(device)) # register to cleanup even on cmd-c
         Timer(runTime, stopReading).start() # schedule to stop reading the data Queue in x seconds
         Timer(0, showTimer).start()
         print 'HERE'
-        readQueue(custom) # start the inf loop reading from the data queue
+        readQueue(uart) # start the inf loop reading from the data queue
                         # this thread holds while the read loop is running
         print 'HERE2'
-        # received = custom.read(timeout_sec=20)
+        # received = uart.read(timeout_sec=20)
         # if received is not None:
         #     # Received data, print it out.
         #     print('Received: {0}'.format(received))

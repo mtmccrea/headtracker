@@ -453,10 +453,10 @@ void sendToBLE(void)
 
   //  char buffer[23]; // '<123.45,678.90,123.45>' + eol
   //  char buffer[20]; // '<123.4,678.9,123.4>' + eol
-  char buffer[14]; // '<123.4,123.4>' + eol
-  char pbuf[6];
-  char rbuf[6];
-  char ybuf[6];
+  char buffer[15]; // '<360136013601>' // TODO: is eol char needed?
+  char pbuf[5];
+  char rbuf[5];
+  char ybuf[5];
 
   if (enableEuler) // If Euler-angle logging is enabled
   {
@@ -466,12 +466,26 @@ void sendToBLE(void)
     //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
     //    sprintf(buffer, "<%s,%s,%s>", String(p, 2), String(r, 2), String(y, 2));
 
-    // cap each float to 5 chars 123.4\0
-    snprintf (pbuf, sizeof(pbuf), "%f", p);
-    snprintf (rbuf, sizeof(rbuf), "%f", r);
+//    // cap each float to 5 chars 123.4\0
+//    snprintf (pbuf, sizeof(pbuf), "%f", p);
+//    snprintf (rbuf, sizeof(rbuf), "%f", r);
+//    //    snprintf (ybuf, sizeof(ybuf), "%f", y);
+//    //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
+//    sprintf(buffer, "<%s,%s>", pbuf, rbuf);
+
+    // deal with negative values
+    p = p % 360;
+    r = r % 360;
+    y = y % 360;
+    
+    // cap each float to 5 chars 3601\0
+    snprintf (pbuf, sizeof(pbuf), "%i", int(p*10+0.5));
+    snprintf (pbuf, sizeof(rbuf), "%i", int(r*10+0.5));
+    snprintf (pbuf, sizeof(ybuf), "%i", int(y*10+0.5));
     //    snprintf (ybuf, sizeof(ybuf), "%f", y);
     //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
-    sprintf(buffer, "<%s,%s>", pbuf, rbuf);
+    sprintf(buffer, "<%s%s%s>", pbuf, rbuf,ybuf);
+  
   } else {
     /*
        Handle other conditions, e.g. individual sensors only, quat only, etc...
