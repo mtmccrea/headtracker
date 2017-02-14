@@ -220,7 +220,7 @@ FlashStorage(flashLogRate, unsigned short);
 // Logging Control Globals //
 /////////////////////////////
 // Defaults all set in config.h
-bool enableSDLogging = ENABLE_SD_LOGGING;
+bool enableSDLogging =      ENABLE_SD_LOGGING;
 bool enableSerialLogging =  ENABLE_UART_LOGGING;
 bool enableTimeLog =        ENABLE_TIME_LOG;
 bool enableCalculatedValues = ENABLE_CALCULATED_LOG;
@@ -235,6 +235,18 @@ unsigned short accelFSR =   IMU_ACCEL_FSR;
 unsigned short gyroFSR =    IMU_GYRO_FSR;
 unsigned short fifoRate =   DMP_SAMPLE_RATE;
 
+const int HEX_LEN = 3; // 3 for 4096 resolution, 4 for 65536 resolution
+const int PACKET_SIZE = 2; // how many values in each data "packet"
+float RES_SCALE;
+char formatSpecs[5];
+
+const int valBufLen = HEX_LEN+1;
+char pbuf[valBufLen];
+char rbuf[valBufLen];
+char ybuf[valBufLen];
+
+const int sndBufLen = HEX_LEN*PACKET_SIZE+2; //'<123abc4de\0' : '<', PACKET_SIZE*HEX_LEN, NULL char
+char buffer[sndBufLen];
 
 // sensor values
 float ax, ay, az; // accelerometer
@@ -242,17 +254,18 @@ float gx, gy, gz; // gyroscope
 float mx, my, mz; // magnetometer
 
 bool setHome;
-float hRoll;
-float hPitch;
-float hYaw;
+float hRoll, hPitch, hYaw;
 float r, p, y;
-bool sendInverse; // send coordinates that would be used for a rotation opposite that of the reading, e.g. ambisonic rotation for a headtracker
-
-
+bool sendInverse; // send coordinates that would be used for a rotation opposite 
+                  // that of the reading, e.g. ambisonic rotation for a headtracker
 
 
 void setup()
 {
+  
+  RES_SCALE = (pow(16, HEX_LEN) - 1) / 360.0;
+  snprintf (formatSpecs, 5, "%%0%iX", HEX_LEN);
+  
   // -------------------- /***IMU Setup***/ --------------------
   setHome = false;
   hRoll = hPitch = hYaw = 0.0;
@@ -321,7 +334,9 @@ void loop()
   // If logging (to either UART and SD card) is enabled
   if ( enableSerialLogging || enableSDLogging)
     //    postIMUData(); // Log new data, post to serial
-    sendToBLE();    // send to BLE module
+//    sendToBLE();    // send to BLE module
+      sendHexToBLE();    // send to BLE module
+//      sendIntsToBLE();    // send to BLE module
 
 
   // -------------------- /***Listen back on BLE***/ --------------------
@@ -438,58 +453,61 @@ void computeEuler(void)
   }
 }
 
-void sendToBLE(void)
+void sendIntsToBLE(void)
 {
 
-  //  char val1[7];  // max of 7 chars per channel
-  //  char val2[7];
-  //  char val3[7];
-  //  char buffer[strlen(val1) + strlen(val2) + strlen(val3)];
-  //
-  //  dtostrf(1.23,  5, 1, val1);
-  //  dtostrf(45.67, 5, 1, val2);
-  //  dtostrf(890.000, 5, 1, val3);
-  //  sprintf(buffer, "<%s,%s,%s>", val1, val2, val3);
-
-  //  char buffer[23]; // '<123.45,678.90,123.45>' + eol
-  //  char buffer[20]; // '<123.4,678.9,123.4>' + eol
-  char buffer[15]; // '<360136013601>' // TODO: is eol char needed?
+  char buffer[16]; // '<360136013601>' // TODO: is eol char needed?
   char pbuf[5];
   char rbuf[5];
   char ybuf[5];
 
   if (enableEuler) // If Euler-angle logging is enabled
   {
-    //    dtostrf(p,5,1,pbuf);
-    //    dtostrf(r,5,1,rbuf);
-    //    dtostrf(y,5,1,ybuf);
-    //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
-    //    sprintf(buffer, "<%s,%s,%s>", String(p, 2), String(r, 2), String(y, 2));
-
-//    // cap each float to 5 chars 123.4\0
-//    snprintf (pbuf, sizeof(pbuf), "%f", p);
-//    snprintf (rbuf, sizeof(rbuf), "%f", r);
-//    //    snprintf (ybuf, sizeof(ybuf), "%f", y);
-//    //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
-//    sprintf(buffer, "<%s,%s>", pbuf, rbuf);
-
     // deal with negative values
-    p = p % 360;
-    r = r % 360;
-    y = y % 360;
+    // TODO: this could be more efficient to get into int before performing mod
+    p = fmod(p,360.0);
+    r = fmod(r,360.0);
+    y = fmod(y,360.0);
     
     // cap each float to 5 chars 3601\0
-    snprintf (pbuf, sizeof(pbuf), "%i", int(p*10+0.5));
-    snprintf (pbuf, sizeof(rbuf), "%i", int(r*10+0.5));
-    snprintf (pbuf, sizeof(ybuf), "%i", int(y*10+0.5));
-    //    snprintf (ybuf, sizeof(ybuf), "%f", y);
-    //    sprintf(buffer, "<%s,%s,%s>", pbuf, rbuf, ybuf);
-    sprintf(buffer, "<%s%s%s>", pbuf, rbuf,ybuf);
+    snprintf (pbuf, 5, "%i", int(p*10+0.5));
+    snprintf (rbuf, 5, "%i", int(r*10+0.5));
+    snprintf (ybuf, 5, "%i", int(y*10+0.5));
+    snprintf(buffer, 16, "<%s%s%s>", pbuf, rbuf,ybuf);
   
   } else {
-    /*
-       Handle other conditions, e.g. individual sensors only, quat only, etc...
-    */
+    // Handle other conditions, e.g. individual sensors only, quat only, etc...
+  }
+
+  // print char buffer to the BLE module
+  ble.print(buffer);
+}
+
+void sendHexToBLE(void)
+{
+  if (enableEuler) // If Euler-angle logging is enabled
+  {
+    // testing
+    // deg // normalized to 4095
+    p = 0.5; // 5.68
+    r = 3.0; // 34
+    y = 358; // 4073
+    
+    // deal with negative values, normalize, scale to n-digit hex range
+    p = fmod(p,360.0) * RES_SCALE;
+    r = fmod(r,360.0) * RES_SCALE;
+    y = fmod(y,360.0) * RES_SCALE;
+    
+    snprintf (pbuf, valBufLen, formatSpecs, int(p+0.5)); // formatSpecs: e.g. "%03X"
+    snprintf (rbuf, valBufLen, formatSpecs, int(r+0.5));
+    snprintf (ybuf, valBufLen, formatSpecs, int(y+0.5));
+//    snprintf(buffer, sndBufLen, "<%s", pbuf); // snprint won't exceed buffer size like sprintf
+    snprintf(buffer, sndBufLen, "<%s%s", pbuf, rbuf); // snprint won't exceed buffer size like sprintf
+//    snprintf(buffer, sndBufLen, "<%s%s%s", pbuf, rbuf,ybuf); // snprint won't exceed buffer size like sprintf
+//    LOG_PORT.println(buffer);
+  
+  } else {
+    // Handle other conditions, e.g. individual sensors only, quat only, etc...
   }
 
   // print char buffer to the BLE module

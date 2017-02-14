@@ -16,12 +16,13 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 20                      # testing - run for this long after connecting
+runTime  = 20                           # testing - run for this long after connecting
 
-HEX_SIZE = 3                        # number of hex digits expected in each value
-PACKET_SIZE = HEX_SIZE * 3          # pre-compute some scalars
-BITDEPTH = np.pow(16, HEX_SIZE) - 1
-TO_DEGREES = BITDEPTH * 360.0
+HEX_SIZE = 3                            # number of hex digits expected in each value
+PACKET_SIZE = 2                         # number of values in a data "packet"
+PACKET_BYTES = HEX_SIZE * PACKET_SIZE   # pre-compute some scalars
+BITDEPTH = pow(16, HEX_SIZE) - 1
+TO_DEGREES = 360.0 / BITDEPTH
 
 # Get the BLE provider for the current platform.
 ble = Adafruit_BluefruitLE.get_provider()
@@ -48,9 +49,9 @@ def readQueue(uart):
         received = uart.read()
         # print 'received: {}'.format(received)
         if received is not None:
-            # print('got some: {}'.format(received))
+            print('\nreceived: {}'.format(received))
             concat = ''.join([concat, received])    # join recieved string with parsing buffer
-            parseStr()                            # search the string for matches,
+            parseStr(1)                            # search the string for matches,
 
             # else:
             #     print "No match found :("
@@ -72,51 +73,92 @@ def initializeStr():
             # print 'clipped: {}'.format(concat)
             initialised = True
             print 'initialised'
-            parseStr()
+            parseStr(1)
         else:
             concat = '' # didn't finda a data start point, clear it out
 
-def parseStr():
+def parseStr(passCnt):
     global concat
     global packets
 
     if not initialised:
         initializeStr()
     else:
-        # print 'processing: {}'.format(concat)
+        print 'processing: {}'.format(concat)
 
-        # look for beginning of next data chunk
-        endAt = concat.find('<', 0, len(concat))
-        if (endAt > -1):                            # found beginning of next data chunk
-            found = concat[:endAt]                  # copy full packet from concat
-            # print 'found: {}'.format(found)
-            packets.append(found)                       # append found packet to result list
-            # print 'remaining: {}'.format(packets)
-            processResult()                         # process result and dispatch
+        foundBytes = len(concat)
+        if foundBytes >= PACKET_BYTES:
+            endAt = concat.find('<', 0, len(concat))    # look for beginning of another data packet
+            if (endAt > -1):                            # found beginning of next data chunk
+                if (concat[0] == '<'):
+                    concat = concat[1:]                 # found leading '<', strip it, and
+                    parseStr(1)                          # process the rest of the string via self, don't count it as a "pass"
+                else:
+                    found = concat[:endAt]                  # copy full packet from concat
+                    print '\tfound: {} after: {}'.format(found, passCnt)
+                    packets.append(found)                       # append found packet to result list
+                    print '\t\t remaining: {}'.format(concat[endAt:])
+                    processResult()                         # process result and dispatch
 
-            if endAt == (len(concat)-1):            # was '<' found at the end of the buffer?
-                concat = ''                         # clear it, ready for next data bundle
-            else:
-                concat = concat[endAt+1:]           # strip the '<'
-                parseStr()                          # process the rest of the string via self
+                    if endAt == (len(concat)-1):            # was '<' found at the end of the buffer?
+                        concat = ''                         # clear it, ready for next data bundle
+                    else:
+                        concat = concat[endAt+1:]           # strip the '<'
+                        parseStr(passCnt+1)                          # process the rest of the string via self
+
+            else:                                       # didn't find beginning of another packet so it's all part of this one
+                print 'found alone: {} after: {}'.format(concat, passCnt)
+                packets.append(concat)                  # append found packet to result list
+                processResult()                         # process result and dispatch
+                concat = ''                             # clear the concat buffer
+
+# def parseStr():
+#     global concat
+#     global packets
+#
+#     if not initialised:
+#         initializeStr()
+#     else:
+#         print 'processing: {}'.format(concat)
+#
+#         # look for beginning of next data chunk
+#         endAt = concat.find('<', 0, len(concat))
+#         # NOTE: TODO: account for the fact that by virtue of the next chunk
+#         # arriving now, the old data is already "behind" realtime!!!
+#         # need to perhaps just find the beginning then count PACKET_BYTES characters
+#         # and dispatch
+#         if (endAt > -1):                            # found beginning of next data chunk
+#             found = concat[:endAt]                  # copy full packet from concat
+#             print 'found: {}'.format(found)
+#             packets.append(found)                       # append found packet to result list
+#             print '\t remaining: {}'.format(packets)
+#             processResult()                         # process result and dispatch
+#
+#             if endAt == (len(concat)-1):            # was '<' found at the end of the buffer?
+#                 concat = ''                         # clear it, ready for next data bundle
+#             else:
+#                 concat = concat[endAt+1:]           # strip the '<'
+#                 parseStr()                          # process the rest of the string via self
 
 def processResult():
+    global packets
     # print packets
+
     if len(packets) > 0:
         for item in packets:
             isize = len(item)
-            if (isize == PACKET_SIZE):              # confirm data packet is correct size
+            if (isize == PACKET_BYTES):              # confirm data packet is correct size
                 # TODO: monitor if this condition is ever caught: if not remove this check
                 if "<" not in item:
                     split = [item[x:x+HEX_SIZE] for x in range(0, len(item), HEX_SIZE)] # split into HEX_SIZE chunks
-                    # print 'split: {}'.format(split)
+                    # print '\t\t split: {}'.format(split)
                     try:
                         ints = [int(val, 16) for val in split]    # convert hex to ints
                         result = [(val * TO_DEGREES) for val in ints] # convert normalized ints to degrees
-                        # result = np.array(map(float, split))
+                        dispatch(result)
                     except:
                         print "Error in splitting data: {}".format(split)
-                    dispatch(result)
+
                 else:
                     print "Error: result looks like more than one packet: {}".format(result)
                     initializeStr()
@@ -128,7 +170,7 @@ def processResult():
         packets = []                                # reset found packets array
 
 def dispatch(data):
-    # print 'dispatching: {}'.format(data)
+    print '\t\t\t dispatching: {}'.format(data)
     msg = liblo.Message(OSC_PATH)           # create a message
     for val in data:
         msg.add(val)                        # ... append arguments

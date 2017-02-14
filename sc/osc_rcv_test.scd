@@ -8,7 +8,7 @@ d = OSCdef(\htracker, {
 	~now = time;
 	~times.add(time);
 	~cnt = ~cnt+1;
-	// msg.postln;
+	// msg[1..3].postln;
 	postf("\t % \t %, fs: %\n", time, ~cnt, fs);
 }, '/imu'
 );
