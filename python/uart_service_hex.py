@@ -19,10 +19,16 @@ OSC_PATH = "/imu"
 runTime  = 20                           # testing - run for this long after connecting
 
 HEX_SIZE = 3                            # number of hex digits expected in each value
-PACKET_SIZE = 2                         # number of values in a data "packet"
+PACKET_SIZE = 3                         # number of values in a data "packet"
 PACKET_BYTES = HEX_SIZE * PACKET_SIZE   # pre-compute some scalars
 BITDEPTH = pow(16, HEX_SIZE) - 1
 TO_DEGREES = 360.0 / BITDEPTH
+
+# debug
+lagcnt = 0
+bcklog = 0
+goodcnt = 0
+total = 0
 
 # Get the BLE provider for the current platform.
 ble = Adafruit_BluefruitLE.get_provider()
@@ -42,6 +48,7 @@ except liblo.AddressError as err:
 def readQueue(uart):
     global concat
     global readMore
+    global total
 
     print "reading..."
     while readMore:
@@ -50,6 +57,7 @@ def readQueue(uart):
         # print 'received: {}'.format(received)
         if received is not None:
             print('\nreceived: {}'.format(received))
+            total += 1
             concat = ''.join([concat, received])    # join recieved string with parsing buffer
             parseStr(1)                            # search the string for matches,
 
@@ -80,6 +88,9 @@ def initializeStr():
 def parseStr(passCnt):
     global concat
     global packets
+    global lagcnt
+    global bcklog
+    global goodcnt
 
     if not initialised:
         initializeStr()
@@ -87,17 +98,22 @@ def parseStr(passCnt):
         print 'processing: {}'.format(concat)
 
         foundBytes = len(concat)
-        if foundBytes >= PACKET_BYTES:
+        if foundBytes >= PACKET_BYTES:                  # Do we have at least one full packet?
             endAt = concat.find('<', 0, len(concat))    # look for beginning of another data packet
             if (endAt > -1):                            # found beginning of next data chunk
                 if (concat[0] == '<'):
                     concat = concat[1:]                 # found leading '<', strip it, and
-                    parseStr(1)                          # process the rest of the string via self, don't count it as a "pass"
+                    parseStr(1)                         # process the rest of the string via self, don't count as a pass
                 else:
                     found = concat[:endAt]                  # copy full packet from concat
                     print '\tfound: {} after: {}'.format(found, passCnt)
                     packets.append(found)                       # append found packet to result list
                     print '\t\t remaining: {}'.format(concat[endAt:])
+
+                    # debug
+                    bcklog += 1
+                    print 'BACKING UP  {}'.format(bcklog)
+
                     processResult()                         # process result and dispatch
 
                     if endAt == (len(concat)-1):            # was '<' found at the end of the buffer?
@@ -111,6 +127,13 @@ def parseStr(passCnt):
                 packets.append(concat)                  # append found packet to result list
                 processResult()                         # process result and dispatch
                 concat = ''                             # clear the concat buffer
+                if passCnt == 1:
+                    goodcnt += 1                             # got a message, but it's not a full packet
+                    print 'GOOD  {}'.format(goodcnt)
+        else:
+            if passCnt == 1:
+                lagcnt += 1                                 # got a message, but it's not a full packet
+                print 'LAGGING  {}'.format(lagcnt)
 
 # def parseStr():
 #     global concat
@@ -264,7 +287,7 @@ def main():
 
         # atexit.register(disconnect(device)) # register to cleanup even on cmd-c
         Timer(runTime, stopReading).start() # schedule to stop reading the data Queue in x seconds
-        Timer(0, showTimer).start()
+        # Timer(0, showTimer).start()
         print 'HERE'
         readQueue(uart) # start the inf loop reading from the data queue
                         # this thread holds while the read loop is running
@@ -288,6 +311,8 @@ def main():
 
 def disconnect(device):
     print 'disconnecting...'
+    print 'good: {}, backlog: {}, lag: {}, tally: {}, total: {}'.format(goodcnt, bcklog, lagcnt, goodcnt+bcklog+lagcnt, total)
+    print 'good: {}%, backlog: {}%, lag: {}%'.format(int(float(goodcnt)/total*100+0.5), int(float(bcklog)/total*100+0.5), int(float(lagcnt)/total*100+0.5))
     device.disconnect()
 
 def stopReading():

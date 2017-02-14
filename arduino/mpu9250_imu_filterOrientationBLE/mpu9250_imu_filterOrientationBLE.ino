@@ -236,7 +236,7 @@ unsigned short gyroFSR =    IMU_GYRO_FSR;
 unsigned short fifoRate =   DMP_SAMPLE_RATE;
 
 const int HEX_LEN = 3; // 3 for 4096 resolution, 4 for 65536 resolution
-const int PACKET_SIZE = 2; // how many values in each data "packet"
+const int PACKET_SIZE = 3; // how many values in each data "packet"
 float RES_SCALE;
 char formatSpecs[5];
 
@@ -480,7 +480,8 @@ void sendIntsToBLE(void)
   }
 
   // print char buffer to the BLE module
-  ble.print(buffer);
+//  ble.print(buffer);
+  ble.writeBLEUart(buffer); // we can assume we're in data mode
 }
 
 void sendHexToBLE(void)
@@ -502,8 +503,8 @@ void sendHexToBLE(void)
     snprintf (rbuf, valBufLen, formatSpecs, int(r+0.5));
     snprintf (ybuf, valBufLen, formatSpecs, int(y+0.5));
 //    snprintf(buffer, sndBufLen, "<%s", pbuf); // snprint won't exceed buffer size like sprintf
-    snprintf(buffer, sndBufLen, "<%s%s", pbuf, rbuf); // snprint won't exceed buffer size like sprintf
-//    snprintf(buffer, sndBufLen, "<%s%s%s", pbuf, rbuf,ybuf); // snprint won't exceed buffer size like sprintf
+//    snprintf(buffer, sndBufLen, "<%s%s", pbuf, rbuf); // snprint won't exceed buffer size like sprintf
+    snprintf(buffer, sndBufLen, "<%s%s%s", pbuf, rbuf,ybuf); // snprint won't exceed buffer size like sprintf
 //    LOG_PORT.println(buffer);
   
   } else {
@@ -511,7 +512,8 @@ void sendHexToBLE(void)
   }
 
   // print char buffer to the BLE module
-  ble.print(buffer);
+//  ble.print(buffer);
+  ble.writeBLEUart(buffer); // we can assume we're in data mode
 }
 
 // post IMU data to Serial port
@@ -822,21 +824,40 @@ void parseSerialInput(char c)
       flashEnableHeading.write(enableHeading);
 #endif
       break;
-    case SET_LOG_RATE: // Increment the log rate from 1-100Hz (10Hz increments)
+    case INC_LOG_RATE: // Increment the log rate from 1-100Hz (10Hz increments)
       temp = imu.dmpGetFifoRate(); // Get current FIFO rate
       if (temp == 1) // If it's 1Hz, set it to 10Hz
-        temp = 10;
+        temp = 2;
       else
-        temp += 10; // Otherwise increment by 10
-      if (temp > 200)  // If it's greater than 100Hz, reset to 1
+        temp += 2; // Otherwise increment by 10
+      if (temp > 60)  // If it's greater than 100Hz, reset to 1
         temp = 1;
       imu.dmpSetFifoRate(temp); // Send the new rate
       temp = imu.dmpGetFifoRate(); // Read the updated rate
 #ifdef ENABLE_NVRAM_STORAGE
       flashLogRate.write(temp); // Store it in NVM and print new rate
 #endif
+      LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");      
+     break;
+     
+     case DEC_LOG_RATE: // Decrement the log rate from 1-100Hz (10Hz increments)
+      temp = imu.dmpGetFifoRate(); // Get current FIFO rate
+      if (temp == 2) // If it's 1Hz, set it to 10Hz
+        temp = 60;
+      else
+        temp -= 2; // Otherwise increment by 10
+      if (temp < 1)  // If it's greater than 100Hz, reset to 1
+        temp = 60;
+      if (temp > 60)
+        temp = 1;
+      imu.dmpSetFifoRate(temp); // Send the new rate
+      temp = imu.dmpGetFifoRate(); // Read the updated rate   
+#ifdef ENABLE_NVRAM_STORAGE
+      flashLogRate.write(temp); // Store it in NVM and print new rate
+#endif
       LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");
       break;
+      
     case SET_ACCEL_FSR: // Increment accelerometer full-scale range
       temp = imu.getAccelFSR();      // Get current FSR
       if (temp == 2) temp = 4;       // If it's 2, go to 4

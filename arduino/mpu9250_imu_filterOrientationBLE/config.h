@@ -72,7 +72,8 @@
 #define ENABLE_QUAT       'q' // Enable/disable quaternion logging (qw, qx, qy, qz)
 #define ENABLE_EULER      'e' // Enable/disable estimated euler angles (roll, pitch, yaw)
 #define ENABLE_HEADING    'H' // Enable/disable estimated heading logging
-#define SET_LOG_RATE      'r' // Adjust logging rate from 1-200 Hz (in 10 Hz increments)
+#define INC_LOG_RATE      '=' // Adjust logging rate from 1-200 Hz (in 10 Hz increments)
+#define DEC_LOG_RATE      '-' // Adjust logging rate from 1-200 Hz (in 10 Hz increments)
 #define SET_ACCEL_FSR     'A' // Set accelerometer FSR (2, 4, 8, 16g)
 #define SET_GYRO_FSR      'G' // Set gyroscope FSR (250, 500, 1000, 2000 dps)
 #define ENABLE_SD_LOGGING 's' // Enable/disable SD-card logging
