@@ -16,7 +16,7 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 20                           # testing - run for this long after connecting
+runTime  = 60                           # testing - run for this long after connecting
 
 HEX_SIZE = 3                            # number of hex digits expected in each value
 PACKET_SIZE = 3                         # number of values in a data "packet"
