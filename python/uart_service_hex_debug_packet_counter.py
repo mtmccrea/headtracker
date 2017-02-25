@@ -16,7 +16,7 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 60 * 5                          # testing - run for this long after connecting
+runTime  = 60 * 3                          # testing - run for this long after connecting
 
 HEX_SIZE = 3                            # number of hex digits expected in each value
 PACKET_SIZE = 3                         # number of values in a data "packet"
@@ -56,7 +56,7 @@ def readQueue(uart):
         received = uart.read()
         # print 'received: {}'.format(received)
         if received is not None:
-            # print('\nreceived: {}'.format(received))
+            print('\nreceived: {}'.format(received))
             total += 1
             concat = ''.join([concat, received])    # join recieved string with parsing buffer
             parseStr(1)                            # search the string for matches,
@@ -95,7 +95,7 @@ def parseStr(passCnt):
     if not initialised:
         initializeStr()
     else:
-        # print 'processing: {}'.format(concat)
+        print 'processing: {}'.format(concat)
 
         foundBytes = len(concat)
         if foundBytes >= PACKET_BYTES:                  # Do we have at least one full packet?
@@ -106,13 +106,13 @@ def parseStr(passCnt):
                     parseStr(1)                         # process the rest of the string via self, don't count as a pass
                 else:
                     found = concat[:endAt]                  # copy full packet from concat
-                    # print '\tfound: {} after: {}'.format(found, passCnt)
+                    print '\tfound: {} after: {}'.format(found, passCnt)
                     packets.append(found)                       # append found packet to result list
-                    # print '\t\t remaining: {}'.format(concat[endAt:])
+                    print '\t\t remaining: {}'.format(concat[endAt:])
 
                     # debug
                     bcklog += 1
-                    # print 'BACKING UP  {}'.format(bcklog)
+                    print 'BACKING UP  {}'.format(bcklog)
 
                     processResult()                         # process result and dispatch
 
@@ -123,17 +123,17 @@ def parseStr(passCnt):
                         parseStr(passCnt+1)                          # process the rest of the string via self
 
             else:                                       # didn't find beginning of another packet so it's all part of this one
-                # print 'found alone: {} after: {}'.format(concat, passCnt)
+                print 'found alone: {} after: {}'.format(concat, passCnt)
                 packets.append(concat)                  # append found packet to result list
                 processResult()                         # process result and dispatch
                 concat = ''                             # clear the concat buffer
                 if passCnt == 1:
                     goodcnt += 1                             # got a message, but it's not a full packet
-                    # print 'GOOD  {}'.format(goodcnt)
+                    print 'GOOD  {}'.format(goodcnt)
         else:
             if passCnt == 1:
                 lagcnt += 1                                 # got a message, but it's not a full packet
-                # print 'LAGGING  {}'.format(lagcnt)
+                print 'LAGGING  {}'.format(lagcnt)
 
 # def parseStr():
 #     global concat

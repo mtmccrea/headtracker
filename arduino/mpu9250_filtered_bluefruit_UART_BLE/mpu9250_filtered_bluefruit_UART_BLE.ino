@@ -3,7 +3,7 @@
   Michael McCrea
   Jan 2017
   mtm5@uw.edu
-  
+
   Reads Accelerometer, Gyro, and Magnetometer data from
   SparkFun 9DoF Razor IMU.
   Applies Magnetometer correction data generated with MotionCal:
@@ -72,8 +72,8 @@
     APPLICATION SETTINGS (BLE)
 
       FACTORYRESET_ENABLE     Perform a factory reset when running this sketch
-                              Factory reset will erase the non-volatile memory 
-                              where config data is stored, setting it back to 
+                              Factory reset will erase the non-volatile memory
+                              where config data is stored, setting it back to
                               factory default values.
     MINIMUM_FIRMWARE_VERSION  Minimum firmware version to have some new features
     MODE_LED_BEHAVIOUR        LED activity, valid options are
@@ -93,7 +93,7 @@ void error(const __FlashStringHelper*err) {
   LOG_PORT.println(err);
   while (1);
 }
-// LED Blink Control 
+// LED Blink Control
 uint32_t lastBlink = 0;
 void blinkLED()
 {
@@ -109,7 +109,7 @@ void blinkLED()
 float mag_offsets[3] = { 36.69F, 0.97F, -2.60F }; // TODO: see if this is the correct order
 
 // Soft iron error compensation matrix
-float mag_softiron_matrix[3][3] = { 
+float mag_softiron_matrix[3][3] = {
   { 0.960, -0.035, 0.021 },
   { 0.035, 1.103, -0.025 },
   { 0.021, -0.025, 0.947 }
@@ -174,12 +174,12 @@ const int PACKET_SIZE = 3;    // how many values in each data "packet"
 
 float RES_SCALE;
 char formatSpecs[5];
-const int valBufLen = HEX_LEN+1;
+const int valBufLen = HEX_LEN + 1;
 char pbuf[valBufLen];
 char rbuf[valBufLen];
 char ybuf[valBufLen];
 
-const int sndBufLen = HEX_LEN*PACKET_SIZE+2; // '<123abc4de\0'='<',PACKET_SIZE*HEX_LEN,NULL char
+const int sndBufLen = HEX_LEN * PACKET_SIZE + 2; // '<123abc4de\0'='<',PACKET_SIZE*HEX_LEN,NULL char
 char buffer[sndBufLen];
 
 // sensor values
@@ -190,17 +190,17 @@ float mx, my, mz;             // magnetometer
 bool setHome;
 float hRoll, hPitch, hYaw;
 float r, p, y;                // rotate = yaw
-                              // tilt = pitch
-                              // tumble = roll
-bool sendInverse;             // send coordinates that would be 
-                              // used for a rotation opposite 
-                              // that of the reading, e.g. ambisonic 
-                              // rotation for a headtracker
+// tilt = pitch
+// tumble = roll
+bool sendInverse;             // send coordinates that would be
+// used for a rotation opposite
+// that of the reading, e.g. ambisonic
+// rotation for a headtracker
 void setup()
 {
   RES_SCALE = (pow(16, HEX_LEN) - 1) / 360.0;
   snprintf (formatSpecs, 5, "%%0%iX", HEX_LEN);
-  
+
   // -------------------- /***IMU Setup***/ --------------------
   setHome = false;
   hRoll = hPitch = hYaw = 0.0;
@@ -211,10 +211,10 @@ void setup()
   pinMode(MPU9250_INT_PIN, INPUT_PULLUP);     // Set up MPU-9250 interrupt input (active-low)
   LOG_PORT.begin(SERIAL_BAUD_RATE);           // Set up serial log port
 
-  #ifdef ENABLE_NVRAM_STORAGE
-    // Load previously-set logging parameters from nvram:
-    initLoggingParams();
-  #endif
+#ifdef ENABLE_NVRAM_STORAGE
+  // Load previously-set logging parameters from nvram:
+  initLoggingParams();
+#endif
 
   // Initialize the MPU-9250. Should return true on success:
   if ( !initIMU() )
@@ -240,95 +240,54 @@ void loop()
   if ( LOG_PORT.available() )
   {
     // If new input is available on USB serial port
-    parseSerialInput(LOG_PORT.read()); // parse it
+    parseSerialInput(LOG_PORT.read());  // parse it
   }
 
   // Then check IMU for new data, and log it
-  if ( !imu.fifoAvailable() ) // If no new data is available
-    return;                   // return to the top of the loop
+  if ( !imu.fifoAvailable() )                   // If no new data is available
+    return;                                     // return to the top of the loop
 
-  // Read from the digital motion processor's FIFO
+  // Use dmpUpdateFifo to update the ax, gx, mx, etc. values
   if ( imu.dmpUpdateFifo() != INV_SUCCESS )
-    return; // If that fails (uh, oh), return to top
+    return;                                     // If that fails (uh, oh), return to top
 
   // If enabled, read from the compass.
   if ( (enableCompass || enableHeading) && (imu.updateCompass() != INV_SUCCESS) )
-    return; // If compass read fails (uh, oh) return to top
+    return;                                     // If compass read fails (uh, oh) return to top
 
-  // poll the sensors
-  retrieveSensorData();
+  if (filterMag) filterSensorData();            // filter sensor data
+  computeEuler();                               // computer Euler values for output in degrees
+  sendHexToBLE();                               // send to BLE module
+  //  sendIntsToBLE();
 
-  if (filterMag)                // filter sensor data
-    filterSensorData();
-  
-  if (enableEuler)              // computer Euler values for output in degrees
-    computeEuler();
-
-  // If logging to UART is enabled
-  if ( enableSerialLogging )
-    sendHexToBLE();             // send to BLE module
-//    postIMUData();            // Log new data, post to serial
-//    sendToBLE();              // send to BLE module
-//    sendIntsToBLE();          // send to BLE module
-
-
-  // Listen back from the BLE module
-  while ( ble.available() )
+  while ( ble.available() )                     // Listen back from the BLE module
   {
     int c = ble.read();
-    // Echo received data from BLE to Serial USB
-    LOG_PORT.print((char)c);
-
-    //    // Hex output too, helps w/debugging!
-    //    LOG_PORT.print(" [0x");
-    //    if (c <= 0xF) LOG_PORT.print(F("0"));
-    //    LOG_PORT.print(c, HEX);
-    //    LOG_PORT.print("] ");
+    LOG_PORT.print((char)c);                    // Echo received data from BLE to Serial USB
   }
 
-}
-
-
-void retrieveSensorData(void)
-{
-  if ( enableCalculatedValues )   // If in calculated mode
-  {
-    // for orientation from IMU
-    ax = imu.calcAccel(imu.ax);
-    ay = imu.calcAccel(imu.ay);
-    az = imu.calcAccel(imu.az);
-    gx = imu.calcGyro(imu.gx);
-    gy = imu.calcGyro(imu.gy);
-    gz = imu.calcGyro(imu.gz);
-    mx = imu.calcMag(imu.mx);
-    my = imu.calcMag(imu.my);
-    mz = imu.calcMag(imu.mz);
-  }
-  else
-  {
-    // for orientation from filter T
-    // TODO: confirm that the filter expects imu.calcX values
-    ax = imu.ax;
-    ay = imu.ay;
-    az = imu.az;
-    gx = imu.gx;
-    gy = imu.gy;
-    gz = imu.gz;
-    mx = imu.mx;
-    my = imu.my;
-    mz = imu.mz;
-  }
 }
 
 void filterSensorData(void)
 {
+
+  // Use the calcAccel, calcGyro, and calcMag functions to
+  // convert the raw sensor readings (signed 16-bit values)
+  // to their respective units.
+  ax = imu.calcAccel(imu.ax);
+  ay = imu.calcAccel(imu.ay);
+  az = imu.calcAccel(imu.az);
+  gx = imu.calcGyro(imu.gx);
+  gy = imu.calcGyro(imu.gy);
+  gz = imu.calcGyro(imu.gz);
+  mx = imu.calcMag(imu.mx);
+  my = imu.calcMag(imu.my);
+  mz = imu.calcMag(imu.mz);
+
   // Apply mag offset compensation (base values in uTesla)
   float x = mx - mag_offsets[0];
   float y = my - mag_offsets[1];
   float z = mz - mag_offsets[2];
-
-  // debug
-  LOG_PORT.println("Filtering...");
 
   // Apply mag soft iron error compensation
   mx = x * mag_softiron_matrix[0][0] + y * mag_softiron_matrix[0][1] + z * mag_softiron_matrix[0][2];
@@ -344,7 +303,7 @@ void filterSensorData(void)
 
 
   // NOTE: filter uses 6-axis IMU algorithm if magnetometer measurement invalid
-  // (avoids NaN in magnetometer normalisation) 
+  // (avoids NaN in magnetometer normalisation)
   // - see filter source if needed, could post if this is the case
   // Update the filter
   filter.update(gx, gy, gz,
@@ -356,33 +315,74 @@ void filterSensorData(void)
 void computeEuler(void)
 {
   if (filterMag)
-  {
-    // get euler from the filter
+  {                               // get euler from the filter
+    LOG_PORT.println("Values from filter");
     p = filter.getPitch();
     r = filter.getRoll();
     y = filter.getYaw();
   } else {
-    // get euler from internal IMU
-    imu.computeEulerAngles();
+    imu.computeEulerAngles();     // get euler from internal IMU
     p = imu.pitch;
     r = imu.roll;
     y = imu.yaw;
   }
 
-  // if setting a new home position...
-  if ( setHome )
-  {
-    hRoll = r;
-    hPitch = p;
-    hYaw = y;
-    r = p = y = 0.0;
-    setHome = false;
-  } else {
-    r = r - hRoll;
-    p = p - hPitch;
-    y = y - hYaw;
-  }
+    // if setting a new home position...
+    if ( setHome )
+    {
+      hRoll = r;
+      hPitch = p;
+      hYaw = y;
+      r = p = y = 0.0;
+      setHome = false;
+    } else {
+      r = r - hRoll;
+      p = p - hPitch;
+      y = y - hYaw;
+    }
 }
+
+void sendHexToBLE(void)
+{
+  //  if (enableEuler) // If Euler-angle logging is enabled
+  //  {
+  /* testing */
+  //    // deg // normalized to 4095
+  //    p = 0.5; // 5.68
+  //    r = 3.0; // 34
+  //    y = 358; // 4073
+
+  LOG_PORT.println("R/P/Y: " + String(r) + "  " + String(p) + "  " + String(y));
+
+  // deal with negative values, normalize, scale to n-digit hex range
+//  p = fmod(p, 360.0);
+//  r = fmod(r, 360.0);
+//  y = fmod(y, 360.0);
+  if (y < 0) y += 360;
+  if (p < 0) p += 360;
+  if (r < 0) r += 360;
+
+  LOG_PORT.println("R/P/Y2 " + String(r) + "  " + String(p) + "  " + String(y));
+
+  p *= RES_SCALE;
+  r *= RES_SCALE;
+  y *= RES_SCALE;
+  
+  snprintf (pbuf, valBufLen, formatSpecs, int(p + 0.5)); // formatSpecs: e.g. "%03X"
+  snprintf (rbuf, valBufLen, formatSpecs, int(r + 0.5));
+  snprintf (ybuf, valBufLen, formatSpecs, int(y + 0.5));
+  // sent in format yaw, pitch, roll (rotate, tilt, tumble)
+  snprintf(buffer, sndBufLen, "<%s%s%s", ybuf, pbuf, rbuf); // snprint won't exceed buffer size like sprintf
+  // LOG_PORT.println(buffer);
+  //  } else {
+  //    // Handle other conditions, e.g. individual sensors only, quat only, etc...
+  //  }
+
+  // print char buffer to the BLE module
+  ble.writeBLEUart(buffer); // we can assume we're in data (UART) mode
+  //  ble.print(buffer);
+}
+
 
 void sendIntsToBLE(void)
 {
@@ -396,53 +396,23 @@ void sendIntsToBLE(void)
   {
     // deal with negative values
     // TODO: this could be more efficient to get into int before performing mod
-    p = fmod(p,360.0);
-    r = fmod(r,360.0);
-    y = fmod(y,360.0);
-    
+    p = fmod(p, 360.0);
+    r = fmod(r, 360.0);
+    y = fmod(y, 360.0);
+
     // cap each float to 5 chars 3601\0
-    snprintf (pbuf, 5, "%i", int(p*10+0.5));
-    snprintf (rbuf, 5, "%i", int(r*10+0.5));
-    snprintf (ybuf, 5, "%i", int(y*10+0.5));
-    snprintf(buffer, 16, "<%s%s%s>", pbuf, rbuf,ybuf);
-  
+    snprintf (pbuf, 5, "%i", int(p * 10 + 0.5));
+    snprintf (rbuf, 5, "%i", int(r * 10 + 0.5));
+    snprintf (ybuf, 5, "%i", int(y * 10 + 0.5));
+    snprintf(buffer, 16, "<%s%s%s>", pbuf, rbuf, ybuf);
+
   } else {
     // Handle other conditions, e.g. individual sensors only, quat only, etc...
   }
 
   // print char buffer to the BLE module
-//  ble.print(buffer);
-  ble.writeBLEUart(buffer); // we can assume we're in data mode
-}
-
-void sendHexToBLE(void)
-{
-  if (enableEuler) // If Euler-angle logging is enabled
-  {
-    /* testing */
-//    // deg // normalized to 4095
-//    p = 0.5; // 5.68
-//    r = 3.0; // 34
-//    y = 358; // 4073
-    
-    // deal with negative values, normalize, scale to n-digit hex range
-    p = fmod(p,360.0) * RES_SCALE;
-    r = fmod(r,360.0) * RES_SCALE;
-    y = fmod(y,360.0) * RES_SCALE;
-    
-    snprintf (pbuf, valBufLen, formatSpecs, int(p+0.5)); // formatSpecs: e.g. "%03X"
-    snprintf (rbuf, valBufLen, formatSpecs, int(r+0.5));
-    snprintf (ybuf, valBufLen, formatSpecs, int(y+0.5));
-    // sent in format yaw, pitch, roll (rotate, tilt, tumble)
-    snprintf(buffer, sndBufLen, "<%s%s%s", ybuf, pbuf, rbuf); // snprint won't exceed buffer size like sprintf
-//    LOG_PORT.println(buffer);
-  } else {
-    // Handle other conditions, e.g. individual sensors only, quat only, etc...
-  }
-
-  // print char buffer to the BLE module
-  ble.writeBLEUart(buffer); // we can assume we're in data (UART) mode
   //  ble.print(buffer);
+  ble.writeBLEUart(buffer); // we can assume we're in data mode
 }
 
 // post IMU data to Serial port
@@ -539,24 +509,24 @@ bool initIMU(void)
   imu.setIntLevel(1);               // Set interrupt to active-low
   imu.setIntLatched(1);             // Latch interrupt output
 
-  /* Configure sensors */  
+  /* Configure sensors */
   imu.setGyroFSR(IMU_GYRO_FSR);     // Set gyro full-scale range: filter expects 250
   imu.setAccelFSR(IMU_ACCEL_FSR);   // Set accel full-scale range: filter expects 2G
   imu.setLPF(IMU_AG_LPF);           // Set Accel/Gyro LPF
-  
+
   // Set gyro/accel sample rate: must be between 4-1000Hz
   // (note: this value will be overridden by the DMP sample rate)
   imu.setSampleRate(IMU_AG_SAMPLE_RATE);
-  
+
   // Set compass sample rate: between 4-100Hz
   imu.setCompassSampleRate(IMU_COMPASS_SAMPLE_RATE);
 
-  // Configure digital motion processor. 
+  // Configure digital motion processor.
   // Use the FIFO to get data from the DMP.
   unsigned short dmpFeatureMask = 0;
   if (ENABLE_GYRO_CALIBRATION)
   {
-    // Gyro calibration re-calibrates the gyro 
+    // Gyro calibration re-calibrates the gyro
     // after a set amount of no motion detected
     dmpFeatureMask |= DMP_FEATURE_SEND_CAL_GYRO;
   }
@@ -635,75 +605,81 @@ void parseSerialInput(char c)
     case ENABLE_DATA_FILTER:        // En/Disable magnetometer filter
       LOG_PORT.print("toggling filter: ");
       filterMag = !filterMag;
+      if (filterMag)
+      {
+        imu.setGyroFSR(250);              // Set gyro full-scale range: filter expects 250
+      } else {
+        imu.setGyroFSR(2000);             // Set gyro full-scale range: default 2000 for imu euler
+      }
       LOG_PORT.println(filterMag);
       break;
 
     case PAUSE_LOGGING:             // Pause logging on SPACE
       enableSerialLogging = !enableSerialLogging;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableSerialLogging.write(enableSerialLogging);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableSerialLogging.write(enableSerialLogging);
+#endif
       break;
-      
+
     case ENABLE_TIME:               // Enable time (milliseconds) logging
       enableTimeLog = !enableTimeLog;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashenableTime.write(enableTimeLog);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashenableTime.write(enableTimeLog);
+#endif
       break;
-      
+
     case ENABLE_ACCEL:              // Enable/disable accelerometer logging
       enableAccel = !enableAccel;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableAccel.write(enableAccel);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableAccel.write(enableAccel);
+#endif
       break;
-    
+
     case ENABLE_GYRO:               // Enable/disable gyroscope logging
       enableGyro = !enableGyro;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableGyro.write(enableGyro);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableGyro.write(enableGyro);
+#endif
       break;
-      
+
     case ENABLE_COMPASS:            // Enable/disable magnetometer logging
       enableCompass = !enableCompass;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableCompass.write(enableCompass);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableCompass.write(enableCompass);
+#endif
       break;
-      
+
     case ENABLE_CALC:               // Enable/disable calculated value logging
       enableCalculatedValues = !enableCalculatedValues;
-      #ifdef ENABLE_NVRAM_STORAGE
+#ifdef ENABLE_NVRAM_STORAGE
       flashEnableCalculatedValues.write(enableCalculatedValues);
-      #endif
+#endif
       break;
-      
+
     case ENABLE_QUAT:               // Enable/disable quaternion logging
       enableQuat = !enableQuat;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableQuat.write(enableQuat);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableQuat.write(enableQuat);
+#endif
       break;
-      
+
     case ENABLE_EULER:              // Enable/disable Euler angle (roll, pitch, yaw)
       enableEuler = !enableEuler;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableEuler.write(enableEuler);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableEuler.write(enableEuler);
+#endif
       break;
-      
+
     case ENABLE_HEADING:            // Enable/disable heading output
       enableHeading = !enableHeading;
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashEnableHeading.write(enableHeading);
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashEnableHeading.write(enableHeading);
+#endif
       break;
 
     case INC_LOG_RATE:              // Increment the log rate from 1-60Hz (2Hz increments)
-                                    // NOTE: This is for testing only, it doesn't update the filter
-                                    // rate, which should match the DMP sample rate
+      // NOTE: This is for testing only, it doesn't update the filter
+      // rate, which should match the DMP sample rate
       temp = imu.dmpGetFifoRate();  // Get current FIFO rate
       if (temp == 1)                // If it's 1Hz, set it to 2Hz
         temp = 2;
@@ -713,15 +689,15 @@ void parseSerialInput(char c)
         temp = 1;
       imu.dmpSetFifoRate(temp);     // Send the new rate
       temp = imu.dmpGetFifoRate();  // Read the updated rate
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashLogRate.write(temp);   // Store it in NVM and print new rate
-      #endif
-      LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");      
+#ifdef ENABLE_NVRAM_STORAGE
+      flashLogRate.write(temp);   // Store it in NVM and print new rate
+#endif
+      LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");
       break;
 
     case DEC_LOG_RATE:              // Decrement the log rate from 1-60Hz (2Hz increments)
-                                    // NOTE: This is for testing only, it doesn't update the filter
-                                    // rate, which should match the DMP sample rate
+      // NOTE: This is for testing only, it doesn't update the filter
+      // rate, which should match the DMP sample rate
       temp = imu.dmpGetFifoRate();
       if (temp == 2)
         temp = 60;
@@ -733,12 +709,12 @@ void parseSerialInput(char c)
         temp = 1;
       imu.dmpSetFifoRate(temp);
       temp = imu.dmpGetFifoRate();
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashLogRate.write(temp);
-      #endif
-        LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");
+#ifdef ENABLE_NVRAM_STORAGE
+      flashLogRate.write(temp);
+#endif
+      LOG_PORT.println("IMU rate set to " + String(temp) + " Hz");
       break;
-      
+
     case SET_ACCEL_FSR:                 // Increment accelerometer full-scale range
       temp = imu.getAccelFSR();         // Get current FSR
       if (temp == 2) temp = 4;          // If it's 2, go to 4
@@ -747,12 +723,12 @@ void parseSerialInput(char c)
       else temp = 2;                    // Otherwise, default to 2
       imu.setAccelFSR(temp);            // Set the new FSR
       temp = imu.getAccelFSR();         // Read it to make sure
-      #ifdef ENABLE_NVRAM_STORAGE
-         flashAccelFSR.write(temp);     // Update the NVM value, and print
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashAccelFSR.write(temp);     // Update the NVM value, and print
+#endif
       LOG_PORT.println("Accel FSR set to +/-" + String(temp) + " g");
       break;
-    
+
     case SET_GYRO_FSR:                    // Increment gyroscope full-scale range
       temp = imu.getGyroFSR();            // Get the current FSR
       if (temp == 250) temp = 500;        // If it's 250, set to 500
@@ -761,12 +737,12 @@ void parseSerialInput(char c)
       else temp = 250;                    // Otherwise, default to 250
       imu.setGyroFSR(temp); // Set the new FSR
       temp = imu.getGyroFSR(); // Read it to make sure
-      #ifdef ENABLE_NVRAM_STORAGE
-        flashGyroFSR.write(temp); // Update the NVM value, and print
-      #endif
+#ifdef ENABLE_NVRAM_STORAGE
+      flashGyroFSR.write(temp); // Update the NVM value, and print
+#endif
       LOG_PORT.println("Gyro FSR set to +/-" + String(temp) + " dps");
       break;
-          
+
     default:                              // If an invalid character, do nothing
       break;
   }
