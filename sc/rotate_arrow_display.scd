@@ -49,7 +49,9 @@ UserView(win, win.view.bounds.size.asRect).drawFunc_({ |v|
 
 	// rotate square
 	arrw_pnts = arrw_pnts.collect{ |pnt|
-		pnt.rotateXZ(~rot).tilt(~tilt).tumble(~tum)
+		// pnt.rotate(~tilt) // NOTE:transform swapped to match visually!
+		// pnt.asSpherical.rotateXY(~rot).rotateYZ(~tilt).rotateXZ(~tum).asCartesian
+		pnt.asSpherical.rotate(~tum).tilt(~tilt).tumble(~rot).asCartesian
 		+ (~ax@~ay.neg) // offset position (in normalized coords)
 		* Cartesian(halfW, halfH, 1); // scale to window size
 	};

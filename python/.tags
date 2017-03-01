@@ -1,0 +1,37 @@
+Adafruit_BluefruitLE	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import Adafruit_BluefruitLE$/;"	namespace	line:6
+UART	/Users/admin/src/headtracker/python/uart_service_hex.py	/^from Adafruit_BluefruitLE.services import UART$/;"	namespace	line:7
+np	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import numpy as np$/;"	namespace	line:8
+re	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import re$/;"	namespace	line:9
+time	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import time$/;"	namespace	line:10
+Timer	/Users/admin/src/headtracker/python/uart_service_hex.py	/^from threading import Timer$/;"	namespace	line:11
+atexit	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import atexit$/;"	namespace	line:12
+liblo	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import liblo, sys$/;"	namespace	line:13
+sys	/Users/admin/src/headtracker/python/uart_service_hex.py	/^import liblo, sys$/;"	namespace	line:13
+OSC_URL	/Users/admin/src/headtracker/python/uart_service_hex.py	/^OSC_URL  = '127.0.0.1'$/;"	variable	line:16
+OSC_PORT	/Users/admin/src/headtracker/python/uart_service_hex.py	/^OSC_PORT = 57120$/;"	variable	line:17
+OSC_PATH	/Users/admin/src/headtracker/python/uart_service_hex.py	/^OSC_PATH = "\/imu"$/;"	variable	line:18
+runTime	/Users/admin/src/headtracker/python/uart_service_hex.py	/^runTime  = 60 * 15                          # testing - run for this long after connecting$/;"	variable	line:19
+HEX_SIZE	/Users/admin/src/headtracker/python/uart_service_hex.py	/^HEX_SIZE = 3                            # number of hex digits expected in each value$/;"	variable	line:21
+PACKET_SIZE	/Users/admin/src/headtracker/python/uart_service_hex.py	/^PACKET_SIZE = 3                         # number of values in a data "packet"$/;"	variable	line:22
+PACKET_BYTES	/Users/admin/src/headtracker/python/uart_service_hex.py	/^PACKET_BYTES = HEX_SIZE * PACKET_SIZE   # pre-compute some scalars$/;"	variable	line:23
+BITDEPTH	/Users/admin/src/headtracker/python/uart_service_hex.py	/^BITDEPTH = pow(16, HEX_SIZE) - 1$/;"	variable	line:24
+TO_DEGREES	/Users/admin/src/headtracker/python/uart_service_hex.py	/^TO_DEGREES = 360.0 \/ BITDEPTH$/;"	variable	line:25
+lagcnt	/Users/admin/src/headtracker/python/uart_service_hex.py	/^lagcnt = 0$/;"	variable	line:28
+bcklog	/Users/admin/src/headtracker/python/uart_service_hex.py	/^bcklog = 0$/;"	variable	line:29
+goodcnt	/Users/admin/src/headtracker/python/uart_service_hex.py	/^goodcnt = 0$/;"	variable	line:30
+total	/Users/admin/src/headtracker/python/uart_service_hex.py	/^total = 0$/;"	variable	line:31
+ble	/Users/admin/src/headtracker/python/uart_service_hex.py	/^ble = Adafruit_BluefruitLE.get_provider()$/;"	variable	line:34
+readMore	/Users/admin/src/headtracker/python/uart_service_hex.py	/^readMore = True$/;"	variable	line:35
+concat	/Users/admin/src/headtracker/python/uart_service_hex.py	/^concat = ''$/;"	variable	line:36
+initialised	/Users/admin/src/headtracker/python/uart_service_hex.py	/^initialised = False$/;"	variable	line:37
+packets	/Users/admin/src/headtracker/python/uart_service_hex.py	/^packets = []$/;"	variable	line:38
+oscTarget	/Users/admin/src/headtracker/python/uart_service_hex.py	/^    oscTarget = liblo.Address(OSC_URL,OSC_PORT)$/;"	variable	line:43
+readQueue	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def readQueue(uart):$/;"	function	line:48
+initializeStr	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def initializeStr():$/;"	function	line:69
+parseStr	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def parseStr(passCnt):$/;"	function	line:88
+processResult	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def processResult():$/;"	function	line:166
+dispatch	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def dispatch(data):$/;"	function	line:195
+main	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def main():$/;"	function	line:208
+disconnect	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def disconnect(device):$/;"	function	line:312
+stopReading	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def stopReading():$/;"	function	line:318
+showTimer	/Users/admin/src/headtracker/python/uart_service_hex.py	/^def showTimer():$/;"	function	line:323

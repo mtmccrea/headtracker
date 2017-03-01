@@ -106,15 +106,15 @@ void blinkLED()
 /*** Magnetometer / Absolute Orientation Filtering ***/
 // Magnetometer Filtering: magnetic calibration values from MotionCal
 // Offsets applied to raw x/y/z values
-float mag_offsets[3] = { 36.69F, 0.97F, -2.60F }; // TODO: see if this is the correct order
+float mag_offsets[3] = { 33.7F, -3.15F, -3.07F }; // TODO: see if this is the correct order
 
 // Soft iron error compensation matrix
 float mag_softiron_matrix[3][3] = {
-  { 0.960, -0.035, 0.021 },
-  { 0.035, 1.103, -0.025 },
-  { 0.021, -0.025, 0.947 }
+  { 0.985, -0.001, 0.005 },
+  { -0.001, 1.021, -0.004 },
+  { 0.005, -0.004, 0.994 }
 };
-float mag_field_strength = 34.10F;
+float mag_field_strength = 31.86F;
 
 // Choose a filter method
 // Mahony is lighter weight as a filter and should be used on slower systems
@@ -196,6 +196,20 @@ bool sendInverse;             // send coordinates that would be
 // used for a rotation opposite
 // that of the reading, e.g. ambisonic
 // rotation for a headtracker
+
+
+/* NOTE/TODO: 
+ *  Kriw Winner (https://github.com/kriswiner/MPU-9250/issues/6): 
+ *  I would use a 200 - 400 Hz acc/gyro sample rate, not 1.6 kHz. 
+ *  You want the sensor fusion rate to be four or five times the data 
+ *  sample rate since the fusion algorithm must iterate a few times 
+ *  to reach a stable solution between sample data updates. If you 
+ *  want to run the fusion filter at 1 kHz, a reasonable rate, you 
+ *  would sample at 200 Hz using a 25 - 40 Hz bandwidth to filter 
+ *  out high frequency noise. This is typically how I run the sensor 
+ *  fusion with the MPU9250.
+ */
+
 void setup()
 {
   RES_SCALE = (pow(16, HEX_LEN) - 1) / 360.0;
@@ -224,7 +238,6 @@ void setup()
     // LED will remain off in this state.
   }
 
-  // Note: DEFAULT in source is 512!
   filter.begin(IMU_AG_SAMPLE_RATE);
 
   initBLE();
@@ -251,6 +264,10 @@ void loop()
   if ( imu.dmpUpdateFifo() != INV_SUCCESS )
     return;                                     // If that fails (uh, oh), return to top
 
+/* 
+ * TODOOOOOOOOOOOOOOOOOOOO: why isn't the compass/magnetometer value updating ???
+ */
+
   // If enabled, read from the compass.
   if ( (enableCompass || enableHeading) && (imu.updateCompass() != INV_SUCCESS) )
     return;                                     // If compass read fails (uh, oh) return to top
@@ -274,15 +291,37 @@ void filterSensorData(void)
   // Use the calcAccel, calcGyro, and calcMag functions to
   // convert the raw sensor readings (signed 16-bit values)
   // to their respective units.
-  ax = imu.calcAccel(imu.ax);
+  ax = imu.calcAccel(imu.ax); // acceleration in g's
   ay = imu.calcAccel(imu.ay);
   az = imu.calcAccel(imu.az);
-  gx = imu.calcGyro(imu.gx);
+  gx = imu.calcGyro(imu.gx);  // rotation in dps
   gy = imu.calcGyro(imu.gy);
   gz = imu.calcGyro(imu.gz);
-  mx = imu.calcMag(imu.mx);
+  mx = imu.calcMag(imu.mx);   // x-axis magnetic field in uT
   my = imu.calcMag(imu.my);
   mz = imu.calcMag(imu.mz);
+
+ LOG_PORT.println("MAG: " + String(mx) + "  " + String(my) + "  " + String(mz));
+  /*
+    * From Razor IMU hookup guide:
+    * "Note that the magnetometer’s x and y axes are 
+    * flipped from those of the accelerometer and gyroscope, 
+    * and the z-axis is inverted as well."
+  */
+  // should this happen after the mag compensation? before?? at all??
+  // should this be corrected in the sketch used to get mag cal from MotionCal?
+//    if (mx == my) LOG_PORT.println("NRRRR!");
+    
+  float tempmx;
+  tempmx = mx;
+  mx = my;
+  my = tempmx;
+
+//  if (mx == my) LOG_PORT.println("NOOOO!");
+//  mz *= -1.0;
+//  az *= -1.0;
+//  gz *= -1.0;
+
 
   // Apply mag offset compensation (base values in uTesla)
   float x = mx - mag_offsets[0];
@@ -294,52 +333,63 @@ void filterSensorData(void)
   my = x * mag_softiron_matrix[1][0] + y * mag_softiron_matrix[1][1] + z * mag_softiron_matrix[1][2];
   mz = x * mag_softiron_matrix[2][0] + y * mag_softiron_matrix[2][1] + z * mag_softiron_matrix[2][2];
 
-  //  // The filter library expects gyro data in degrees/s, but adafruit sensor
-  //  // uses rad/s so we need to convert them first (or adapt the filter lib
-  //  // where they are being converted)
-  //  float gx = gyro_event.gyro.x * 57.2958F;
-  //  float gy = gyro_event.gyro.y * 57.2958F;
-  //  float gz = gyro_event.gyro.z * 57.2958F;
-
-
+//  // imu gyroscope returns uses degrees/second
+//  // Mahony converts to radians/second internally
+//  float gyroScale = 3.14159f / 180.0f;
+//  gx = gx * gyroScale;
+//  gy = gy * gyroScale;
+//  gz = gz * gyroScale;
+  
+  
   // NOTE: filter uses 6-axis IMU algorithm if magnetometer measurement invalid
   // (avoids NaN in magnetometer normalisation)
   // - see filter source if needed, could post if this is the case
   // Update the filter
-  filter.update(gx, gy, gz,
-                ax, ay, az,
-                mx, my, mz);
+  filter.update(
+    gx, gy, gz,
+    ax, ay, az,
+    mx, my, mz
+  );
 }
 
 
 void computeEuler(void)
 {
   if (filterMag)
-  {                               // get euler from the filter
+  { // get euler from the filter
     LOG_PORT.println("Values from filter");
     p = filter.getPitch();
     r = filter.getRoll();
     y = filter.getYaw();
   } else {
-    imu.computeEulerAngles();     // get euler from internal IMU
+    imu.computeEulerAngles(true);     // get euler from internal IMU
     p = imu.pitch;
     r = imu.roll;
     y = imu.yaw;
   }
 
-    // if setting a new home position...
-    if ( setHome )
-    {
-      hRoll = r;
-      hPitch = p;
-      hYaw = y;
-      r = p = y = 0.0;
-      setHome = false;
-    } else {
-      r = r - hRoll;
-      p = p - hPitch;
-      y = y - hYaw;
-    }
+//    LOG_PORT.println("Y/P/R: " + String(y) + "  " + String(p) + "  " + String(r));
+
+  // deal with negative values, normalize, scale to n-digit hex range
+  if (y < 0) y += 360;
+  if (p < 0) p += 360;
+  if (r < 0) r += 360;
+  
+  // if setting a new home position...
+  if ( setHome )
+  {
+    hRoll = r;
+    hPitch = p;
+    hYaw = y;
+    r = p = y = 0.0;
+    setHome = false;
+  } else {
+    r = r - hRoll;
+    p = p - hPitch;
+    y = y - hYaw;
+  }
+
+//  LOG_PORT.println("Y/P/R2 " + String(y) + "  " + String(p) + "  " + String(r));
 }
 
 void sendHexToBLE(void)
@@ -347,27 +397,15 @@ void sendHexToBLE(void)
   //  if (enableEuler) // If Euler-angle logging is enabled
   //  {
   /* testing */
-  //    // deg // normalized to 4095
+  //    // deg // normalized 0 to 4095
   //    p = 0.5; // 5.68
   //    r = 3.0; // 34
   //    y = 358; // 4073
 
-  LOG_PORT.println("R/P/Y: " + String(r) + "  " + String(p) + "  " + String(y));
-
-  // deal with negative values, normalize, scale to n-digit hex range
-//  p = fmod(p, 360.0);
-//  r = fmod(r, 360.0);
-//  y = fmod(y, 360.0);
-  if (y < 0) y += 360;
-  if (p < 0) p += 360;
-  if (r < 0) r += 360;
-
-  LOG_PORT.println("R/P/Y2 " + String(r) + "  " + String(p) + "  " + String(y));
-
   p *= RES_SCALE;
   r *= RES_SCALE;
   y *= RES_SCALE;
-  
+
   snprintf (pbuf, valBufLen, formatSpecs, int(p + 0.5)); // formatSpecs: e.g. "%03X"
   snprintf (rbuf, valBufLen, formatSpecs, int(r + 0.5));
   snprintf (ybuf, valBufLen, formatSpecs, int(y + 0.5));
@@ -404,7 +442,7 @@ void sendIntsToBLE(void)
     snprintf (pbuf, 5, "%i", int(p * 10 + 0.5));
     snprintf (rbuf, 5, "%i", int(r * 10 + 0.5));
     snprintf (ybuf, 5, "%i", int(y * 10 + 0.5));
-    snprintf(buffer, 16, "<%s%s%s>", pbuf, rbuf, ybuf);
+    snprintf(buffer, 16, "<%s%s%s>", ybuf, pbuf, rbuf); // send as ypr/rtt
 
   } else {
     // Handle other conditions, e.g. individual sensors only, quat only, etc...
@@ -510,7 +548,13 @@ bool initIMU(void)
   imu.setIntLatched(1);             // Latch interrupt output
 
   /* Configure sensors */
-  imu.setGyroFSR(IMU_GYRO_FSR);     // Set gyro full-scale range: filter expects 250
+  //  imu.setGyroFSR(IMU_GYRO_FSR);     // Set gyro full-scale range: filter expects 250
+  if (filterMag) 
+  {
+    imu.setGyroFSR(250);              // Set gyro full-scale range: filter expects 250
+  } else {
+    imu.setGyroFSR(2000);             // Set gyro full-scale range: default 2000 for imu euler
+  }
   imu.setAccelFSR(IMU_ACCEL_FSR);   // Set accel full-scale range: filter expects 2G
   imu.setLPF(IMU_AG_LPF);           // Set Accel/Gyro LPF
 

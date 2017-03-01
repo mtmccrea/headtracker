@@ -16,7 +16,7 @@ import liblo, sys
 OSC_URL  = '127.0.0.1'
 OSC_PORT = 57120
 OSC_PATH = "/imu"
-runTime  = 60 * 5                          # testing - run for this long after connecting
+runTime  = 60 * 15                          # testing - run for this long after connecting
 
 HEX_SIZE = 3                            # number of hex digits expected in each value
 PACKET_SIZE = 3                         # number of values in a data "packet"
@@ -193,7 +193,7 @@ def processResult():
         packets = []                                # reset found packets array
 
 def dispatch(data):
-    print '\t\t\t dispatching: {}'.format(data)
+    print '\t dispatching: {}'.format(data)
     msg = liblo.Message(OSC_PATH)           # create a message
     for val in data:
         msg.add(val)                        # ... append arguments
