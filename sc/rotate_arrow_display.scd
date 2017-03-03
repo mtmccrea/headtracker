@@ -75,12 +75,16 @@ UserView(win, win.view.bounds.size.asRect).drawFunc_({ |v|
 	arrw_pnts_top_xf.rotate(-1).do{|pnt|
 		Pen.lineTo(pnt)
 	};
+	Pen.fillColor_(Color.gray.alpha_(0.5));
+	Pen.fill;
 
 	// draw bottom arrow
 	Pen.moveTo(arrw_pnts_bottom_xf[0]);
 	arrw_pnts_bottom_xf.rotate(-1).do{|pnt|
 		Pen.lineTo(pnt)
 	};
+	Pen.fillColor_(Color.blue.alpha_(0.5));
+	Pen.fill;
 
 	// draw interconnect lines between arrow vertices
 	arrw_pnts_top_xf.do{|pnt, i|

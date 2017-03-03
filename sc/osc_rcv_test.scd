@@ -19,9 +19,9 @@ d = OSCdef(\htracker, {
 	uivals = ypr.copy;
 	{
 		~dials !? {
-			~dials[0].value=uivals[0];
-			~dials[1].value=uivals[1];
-			~dials[2].value=uivals[2];
+			~dials[0].value=uivals[0]; // rotate
+			~dials[1].value=uivals[1]; // tilt
+			~dials[2].value=uivals[2]; // tumble
 		}
 	}.defer;
 

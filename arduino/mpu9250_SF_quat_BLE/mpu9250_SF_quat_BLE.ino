@@ -10,10 +10,10 @@
   https://www.pjrc.com/store/prop_shield.html
 
   Applies Mahony or Madgwick filters via libraries:
-  MahonyAHRS sketch from
-  https://github.com/PaulStoffregen/MahonyAHRS
-  or the MagdwickAHRS sketch from
-  https://github.com/PaulStoffregen/MadgwickAHRS
+  https://github.com/sparkfun/SparkFun_MPU-9250_Breakout_Arduino_Library
+  the quaternion filters are ported from Kris Winer's library:
+  https://github.com/kriswiner/MPU-9250
+
 
   TODO:
   - store MotionCal data in memory rather than hard-coded
@@ -52,8 +52,9 @@
 #include "config.h"
 
 /*** Absolute orientation filtering *** ------------------------------- */
-#include <MahonyAHRS.h>
-#include <MadgwickAHRS.h>
+// #include <MahonyAHRS.h>
+// #include <MadgwickAHRS.h>
+#include "quaternionFilters.h"
 
 /*** BLE *** ---------------------------------------------------------- */
 #include <Arduino.h>
@@ -106,21 +107,25 @@ void blinkLED()
 /*** Magnetometer / Absolute Orientation Filtering ***/
 // Magnetometer Filtering: magnetic calibration values from MotionCal
 // Offsets applied to raw x/y/z values
-float mag_offsets[3] = { 32.52F, -7.28F, -1.71F }; // TODO: see if this is the correct order
+float mag_offsets[3] = { 32.21F, -7.74F, -0.98F }; // TODO: see if this is the correct order
 
 // Soft iron error compensation matrix
 float mag_softiron_matrix[3][3] = {
-  { 0.991, -0.007, -0.007 },
-  { -0.007, 1.045, -0.012 },
-  { 0.007, -0.012, 0.967 }
+  { 0.978, -0.003, -0.005 },
+  { -0.003, 1.036, 0.008 },
+  { -0.005, 0.008, 0.987 }
 };
-float mag_field_strength = 32.39F;
+float mag_field_strength = 31.67F;
 
 // Choose a filter method
 // Mahony is lighter weight as a filter and should be used on slower systems
-//Mahony filter;
- Madgwick filter;
+// Mahony filter;
+// Madgwick filter;
 
+/*** timing control for filters ***/
+float deltat = 0.0f, sum = 0.0f;  // integration interval for both filter schemes
+uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
+uint32_t Now = 0;        // used to calculate integration interval
 
 /*** IMU ***/
 MPU9250_DMP imu; // Create an instance of the MPU9250_DMP class
@@ -198,15 +203,15 @@ bool sendInverse;             // send coordinates that would be
 // rotation for a headtracker
 
 
-/* NOTE/TODO: 
- *  Kriw Winner (https://github.com/kriswiner/MPU-9250/issues/6): 
- *  I would use a 200 - 400 Hz acc/gyro sample rate, not 1.6 kHz. 
- *  You want the sensor fusion rate to be four or five times the data 
- *  sample rate since the fusion algorithm must iterate a few times 
- *  to reach a stable solution between sample data updates. If you 
- *  want to run the fusion filter at 1 kHz, a reasonable rate, you 
- *  would sample at 200 Hz using a 25 - 40 Hz bandwidth to filter 
- *  out high frequency noise. This is typically how I run the sensor 
+/* NOTE/TODO:
+ *  Kriw Winner (https://github.com/kriswiner/MPU-9250/issues/6):
+ *  I would use a 200 - 400 Hz acc/gyro sample rate, not 1.6 kHz.
+ *  You want the sensor fusion rate to be four or five times the data
+ *  sample rate since the fusion algorithm must iterate a few times
+ *  to reach a stable solution between sample data updates. If you
+ *  want to run the fusion filter at 1 kHz, a reasonable rate, you
+ *  would sample at 200 Hz using a 25 - 40 Hz bandwidth to filter
+ *  out high frequency noise. This is typically how I run the sensor
  *  fusion with the MPU9250.
  */
 
@@ -238,7 +243,7 @@ void setup()
     // LED will remain off in this state.
   }
 
-  filter.begin(IMU_AG_SAMPLE_RATE);
+  // filter.begin(IMU_AG_SAMPLE_RATE);
 
   initBLE();
 }
@@ -264,10 +269,6 @@ void loop()
   if ( imu.dmpUpdateFifo() != INV_SUCCESS )
     return;                                     // If that fails (uh, oh), return to top
 
-/* 
- * TODOOOOOOOOOOOOOOOOOOOO: why isn't the compass/magnetometer value updating ???
- */
-
   // If enabled, read from the compass.
   if ( imu.updateCompass() != INV_SUCCESS )
   {
@@ -292,6 +293,12 @@ void loop()
 
 void filterSensorData(void)
 {
+
+  // updat ethe time between last sampling
+  Now = micros();
+  // Set integration time by time elapsed since last filter update
+  deltat = ((Now - lastUpdate) / 1000000.0f);
+  lastUpdate = Now;
 
   // Use the calcAccel, calcGyro, and calcMag functions to
   // convert the raw sensor readings (signed 16-bit values)
@@ -320,32 +327,28 @@ void filterSensorData(void)
   mz = x * mag_softiron_matrix[2][0] + y * mag_softiron_matrix[2][1] + z * mag_softiron_matrix[2][2];
 
 //  // imu gyroscope returns uses degrees/second
-//  // Mahony converts to radians/second internally
-//  float gyroScale = 3.14159f / 180.0f;
-//  gx = gx * gyroScale;
-//  gy = gy * gyroScale;
-//  gz = gz * gyroScale;
+//  // MadgwickQuaternionUpdate expects radians/second
+ float gyroScale = 3.14159f / 180.0f;
+ gx = gx * gyroScale;
+ gy = gy * gyroScale;
+ gz = gz * gyroScale;
 
-
+  /* Update the filter */
   /*
+    * NOTE: filter uses 6-axis IMU algorithm if magnetometer measurement invalid
+    * (avoids NaN in magnetometer normalisation)
+    * - see filter source if needed, could post if this is the case
+
     * From Razor IMU hookup guide:
-    * "Note that the magnetometer’s x and y axes are 
-    * flipped from those of the accelerometer and gyroscope, 
+    * "Note that the magnetometer’s x and y axes are
+    * flipped from those of the accelerometer and gyroscope,
     * and the z-axis is inverted as well."
   */
-
-  mz *= -1.0;
-//  az *= -1.0;
-//  gz *= -1.0;
-  
-  // NOTE: filter uses 6-axis IMU algorithm if magnetometer measurement invalid
-  // (avoids NaN in magnetometer normalisation)
-  // - see filter source if needed, could post if this is the case
-  // Update the filter
-  filter.update(
+  // filter.update(
+  MadgwickQuaternionUpdate(
     gx, gy, gz,
     ax, ay, az,
-    my, mx, mz // note mx<>my - // should this happen after the mag compensation? before?? at all??
+    my, mx, mz * -1.0, deltat // note mx<>my - // should this happen after the mag compensation? before?? at all??
                                 // should this be corrected in the sketch used to get mag cal from MotionCal?
   );
 }
@@ -355,10 +358,20 @@ void computeEuler(void)
 {
   if (filterMag)
   { // get euler from the filter
-    LOG_PORT.println("Values from filter");
-    p = filter.getPitch();
-    r = filter.getRoll();
-    y = filter.getYaw();
+    // LOG_PORT.println("Values from filter");
+    // p = filter.getPitch();
+    // r = filter.getRoll();
+    // y = filter.getYaw();
+    // see if we're getting quaternions out
+    LOG_PORT.println("QUAT  "
+      + String(*getQ()) + "  "
+      + String(*(getQ() + 1)) + "  "
+      + String(*(getQ() + 2)) + "  "
+      + String(*(getQ() + 3))
+    );
+
+    computeYPR();
+
   } else {
     imu.computeEulerAngles(true);     // get euler from internal IMU
     p = imu.pitch;
@@ -367,7 +380,7 @@ void computeEuler(void)
   }
 
   LOG_PORT.println("Y/P/R  " + String(y) + "  " + String(p) + "  " + String(r));
-  
+
   // if setting a new home position...
   if ( setHome )
   {
@@ -452,6 +465,30 @@ void sendIntsToBLE(void)
   //  ble.print(buffer);
   ble.writeBLEUart(buffer); // we can assume we're in data mode
 }
+
+// compute yaw, pitch, roll from quaternions
+void computeYPR(void)
+{
+  y   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ()
+                * *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1)
+                * *(getQ()+1) - *(getQ()+2) * *(getQ()+2) - *(getQ()+3)
+                * *(getQ()+3));
+  p = -asin(2.0f * (*(getQ()+1) * *(getQ()+3) - *getQ()
+                * *(getQ()+2)));
+  r  = atan2(2.0f * (*getQ() * *(getQ()+1) + *(getQ()+2)
+                * *(getQ()+3)), *getQ() * *getQ() - *(getQ()+1)
+                * *(getQ()+1) - *(getQ()+2) * *(getQ()+2) + *(getQ()+3)
+                * *(getQ()+3));
+  p *= RAD_TO_DEG;
+  y *= RAD_TO_DEG;
+
+  // Declination of SparkFun Electronics (40°05'26.6"N 105°11'05.9"W) is
+  // 	8° 30' E  ± 0° 21' (or 8.5°) on 2016-07-19
+  // - http://www.ngdc.noaa.gov/geomag-web/#declination
+  // y  -= 8.5;
+  r *= RAD_TO_DEG;
+}
+
 
 // post IMU data to Serial port
 void postIMUData(void)
@@ -549,7 +586,7 @@ bool initIMU(void)
 
   /* Configure sensors */
   //  imu.setGyroFSR(IMU_GYRO_FSR);     // Set gyro full-scale range: filter expects 250
-  if (filterMag) 
+  if (filterMag)
   {
     imu.setGyroFSR(250);              // Set gyro full-scale range: filter expects 250
   } else {
