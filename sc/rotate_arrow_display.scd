@@ -64,8 +64,8 @@ UserView(win, win.view.bounds.size.asRect).drawFunc_({ |v|
 	// discard z for 2D
 	arrw_pnts_xf = arrw_pnts_xf.collect(_.asPoint);
 
-	arrw_pnts_top_xf = arrw_pnts_xf[.. (arrw_pnts_xf.size.half-1).asInt];
-	arrw_pnts_bottom_xf = arrw_pnts_xf[arrw_pnts_xf.size.half.asInt..];
+	arrw_pnts_top_xf = arrw_pnts_xf[.. (arrw_pnts_xf.size.half-1).asInteger];
+	arrw_pnts_bottom_xf = arrw_pnts_xf[arrw_pnts_xf.size.half.asInteger..];
 
 	Pen.translate(halfW, halfH); // move to center
 	// Pen.moveTo(arrw_pnts_xf[0]);
